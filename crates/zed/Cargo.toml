@@ -18,29 +18,18 @@ path = "src/main.rs"
 activity_indicator.workspace = true
 anyhow.workspace = true
 assets.workspace = true
-assistant.workspace = true
-assistant2.workspace = true
-assistant_context_editor.workspace = true
-assistant_settings.workspace = true
-assistant_tools.workspace = true
 async-watch.workspace = true
-audio.workspace = true
 auto_update.workspace = true
-auto_update_ui.workspace = true
 backtrace = "0.3"
 breadcrumbs.workspace = true
-call.workspace = true
-channel.workspace = true
 chrono.workspace = true
 clap.workspace = true
 cli.workspace = true
 client.workspace = true
-collab_ui.workspace = true
 collections.workspace = true
 command_palette.workspace = true
 command_palette_hooks.workspace = true
 component_preview.workspace = true
-copilot.workspace = true
 debugger_ui.workspace = true
 debugger_tools.workspace = true
 db.workspace = true
@@ -51,7 +40,6 @@ extension.workspace = true
 extension_host.workspace = true
 extensions_ui.workspace = true
 feature_flags.workspace = true
-feedback.workspace = true
 file_finder.workspace = true
 fs.workspace = true
 futures.workspace = true
@@ -68,8 +56,6 @@ install_cli.workspace = true
 journal.workspace = true
 language.workspace = true
 language_extension.workspace = true
-language_model.workspace = true
-language_models.workspace = true
 language_selector.workspace = true
 language_tools.workspace = true
 languages = { workspace = true, features = ["load-grammars"] }
@@ -91,7 +77,6 @@ profiling.workspace = true
 project.workspace = true
 project_panel.workspace = true
 project_symbols.workspace = true
-prompt_store.workspace = true
 proto.workspace = true
 recent_projects.workspace = true
 release_channel.workspace = true
@@ -110,7 +95,6 @@ simplelog.workspace = true
 smol.workspace = true
 snippet_provider.workspace = true
 snippets_ui.workspace = true
-supermaven.workspace = true
 sysinfo.workspace = true
 tab_switcher.workspace = true
 task.workspace = true
@@ -146,7 +130,6 @@ winresource = "0.1"
 ashpd.workspace = true
 
 [dev-dependencies]
-call = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 image_viewer = { workspace = true, features = ["test-support"] }

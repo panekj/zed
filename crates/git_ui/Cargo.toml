@@ -19,7 +19,6 @@ test-support = ["multi_buffer/test-support"]
 [dependencies]
 anyhow.workspace = true
 askpass.workspace = true
-assistant_settings.workspace = true
 buffer_diff.workspace = true
 chrono.workspace = true
 collections.workspace = true
@@ -33,7 +32,6 @@ git.workspace = true
 gpui.workspace = true
 itertools.workspace = true
 language.workspace = true
-language_model.workspace = true
 linkify.workspace = true
 linkme.workspace = true
 log.workspace = true
