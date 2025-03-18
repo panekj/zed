@@ -1,17 +1,17 @@
 [package]
-name = "perplexity"
+name    = "perplexity"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "Apache-2.0"
 
 [lib]
-path = "src/perplexity.rs"
+path       = "src/perplexity.rs"
 crate-type = ["cdylib"]
 
 [lints]
 workspace = true
 
 [dependencies]
-serde = "1"
+serde             = "1"
 zed_extension_api = { path = "../../crates/extension_api" }

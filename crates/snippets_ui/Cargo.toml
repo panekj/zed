@@ -1,8 +1,8 @@
 [package]
-name = "snippets_ui"
+name    = "snippets_ui"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
@@ -12,11 +12,11 @@ workspace = true
 path = "src/snippets_ui.rs"
 
 [dependencies]
-fuzzy.workspace = true
-gpui.workspace = true
-language.workspace = true
-paths.workspace = true
-picker.workspace = true
-ui.workspace = true
-util.workspace = true
-workspace.workspace = true
+fuzzy     = { workspace = true }
+gpui      = { workspace = true }
+language  = { workspace = true }
+paths     = { workspace = true }
+picker    = { workspace = true }
+ui        = { workspace = true }
+util      = { workspace = true }
+workspace = { workspace = true }

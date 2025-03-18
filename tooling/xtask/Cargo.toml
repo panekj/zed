@@ -1,15 +1,15 @@
 [package]
-name = "xtask"
+name    = "xtask"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
 workspace = true
 
 [dependencies]
-anyhow.workspace = true
-cargo_metadata.workspace = true
-cargo_toml.workspace = true
-clap = { workspace = true, features = ["derive"] }
+anyhow         = { workspace = true }
+cargo_metadata = { workspace = true }
+cargo_toml     = { workspace = true }
+clap           = { workspace = true, features = ["derive"] }

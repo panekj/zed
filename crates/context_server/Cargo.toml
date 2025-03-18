@@ -1,8 +1,8 @@
 [package]
-name = "context_server"
+name    = "context_server"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
@@ -12,21 +12,21 @@ workspace = true
 path = "src/context_server.rs"
 
 [dependencies]
-anyhow.workspace = true
-async-trait.workspace = true
-collections.workspace = true
-command_palette_hooks.workspace = true
-context_server_settings.workspace = true
-extension.workspace = true
-futures.workspace = true
-gpui.workspace = true
-log.workspace = true
-parking_lot.workspace = true
-postage.workspace = true
-project.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-settings.workspace = true
-smol.workspace = true
-url = { workspace = true, features = ["serde"] }
-util.workspace = true
+anyhow                  = { workspace = true }
+async-trait             = { workspace = true }
+collections             = { workspace = true }
+command_palette_hooks   = { workspace = true }
+context_server_settings = { workspace = true }
+extension               = { workspace = true }
+futures                 = { workspace = true }
+gpui                    = { workspace = true }
+log                     = { workspace = true }
+parking_lot             = { workspace = true }
+postage                 = { workspace = true }
+project                 = { workspace = true }
+serde                   = { workspace = true }
+serde_json              = { workspace = true }
+settings                = { workspace = true }
+smol                    = { workspace = true }
+url                     = { workspace = true, features = ["serde"] }
+util                    = { workspace = true }

@@ -1,8 +1,8 @@
 [package]
-name = "credentials_provider"
+name    = "credentials_provider"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
@@ -12,10 +12,10 @@ workspace = true
 path = "src/credentials_provider.rs"
 
 [dependencies]
-anyhow.workspace = true
-futures.workspace = true
-gpui.workspace = true
-paths.workspace = true
-release_channel.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+anyhow          = { workspace = true }
+futures         = { workspace = true }
+gpui            = { workspace = true }
+paths           = { workspace = true }
+release_channel = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
