@@ -1002,7 +1002,6 @@ pub struct Editor {
     pub project: Option<Entity<Project>>,
     semantics_provider: Option<Rc<dyn SemanticsProvider>>,
     completion_provider: Option<Rc<dyn CompletionProvider>>,
-    collaboration_hub: Option<Box<dyn CollaborationHub>>,
     blink_manager: Entity<BlinkManager>,
     show_cursor_names: bool,
     hovered_cursors: HashMap<HoveredCursor, Task<()>>,
@@ -1220,9 +1219,7 @@ pub struct RemoteSelection {
     pub replica_id: ReplicaId,
     pub selection: Selection<Anchor>,
     pub cursor_shape: CursorShape,
-    pub collaborator_id: CollaboratorId,
     pub line_mode: bool,
-    pub user_name: Option<SharedString>,
     pub color: PlayerColor,
 }
 
@@ -1989,7 +1986,6 @@ impl Editor {
             hard_wrap: None,
             completion_provider: project.clone().map(|project| Rc::new(project) as _),
             semantics_provider: project.clone().map(|project| Rc::new(project) as _),
-            collaboration_hub: project.clone().map(|project| Box::new(project) as _),
             project,
             blink_manager: blink_manager.clone(),
             show_local_selections: true,
@@ -2365,7 +2361,6 @@ impl Editor {
                 key_context.add(EDIT_PREDICTION_CONFLICT_KEY_CONTEXT);
             } else {
                 key_context.add(EDIT_PREDICTION_KEY_CONTEXT);
-                key_context.add("copilot_suggestion");
             }
         }
 
@@ -2612,14 +2607,6 @@ impl Editor {
 
     pub fn set_mode(&mut self, mode: EditorMode) {
         self.mode = mode;
-    }
-
-    pub fn collaboration_hub(&self) -> Option<&dyn CollaborationHub> {
-        self.collaboration_hub.as_deref()
-    }
-
-    pub fn set_collaboration_hub(&mut self, hub: Box<dyn CollaborationHub>) {
-        self.collaboration_hub = Some(hub);
     }
 
     pub fn set_in_project_search(&mut self, in_project_search: bool) {
@@ -7010,10 +6997,10 @@ impl Editor {
         if self.has_active_inline_completion() {
             self.cycle_inline_completion(Direction::Next, window, cx);
         } else {
-            let is_copilot_disabled = self
+            if self
                 .refresh_inline_completion(false, true, window, cx)
-                .is_none();
-            if is_copilot_disabled {
+                .is_none()
+            {
                 cx.propagate();
             }
         }
@@ -7028,10 +7015,10 @@ impl Editor {
         if self.has_active_inline_completion() {
             self.cycle_inline_completion(Direction::Prev, window, cx);
         } else {
-            let is_copilot_disabled = self
+            if self
                 .refresh_inline_completion(false, true, window, cx)
-                .is_none();
-            if is_copilot_disabled {
+                .is_none()
+            {
                 cx.propagate();
             }
         }
@@ -20004,24 +19991,8 @@ impl Editor {
         let vim_mode = vim_enabled(cx);
 
         let edit_predictions_provider = all_language_settings(file, cx).edit_predictions.provider;
-        let copilot_enabled = edit_predictions_provider
-            == language::language_settings::EditPredictionProvider::Copilot;
-        let copilot_enabled_for_language = self
-            .buffer
-            .read(cx)
-            .language_settings(cx)
-            .show_edit_predictions;
 
         let project = project.read(cx);
-        telemetry::event!(
-            event_type,
-            file_extension,
-            vim_mode,
-            copilot_enabled,
-            copilot_enabled_for_language,
-            edit_predictions_provider,
-            is_via_ssh = project.is_via_ssh(),
-        );
     }
 
     /// Copy the highlighted chunks to the clipboard as JSON. The format is an array of lines,
@@ -21172,28 +21143,6 @@ fn test_wrap_with_prefix() {
     );
 }
 
-pub trait CollaborationHub {
-    fn collaborators<'a>(&self, cx: &'a App) -> &'a HashMap<PeerId, Collaborator>;
-    fn user_participant_indices<'a>(&self, cx: &'a App) -> &'a HashMap<u64, ParticipantIndex>;
-    fn user_names(&self, cx: &App) -> HashMap<u64, SharedString>;
-}
-
-impl CollaborationHub for Entity<Project> {
-    fn collaborators<'a>(&self, cx: &'a App) -> &'a HashMap<PeerId, Collaborator> {
-        self.read(cx).collaborators()
-    }
-
-    fn user_participant_indices<'a>(&self, cx: &'a App) -> &'a HashMap<u64, ParticipantIndex> {
-        self.read(cx).user_store().read(cx).participant_indices()
-    }
-
-    fn user_names(&self, cx: &App) -> HashMap<u64, SharedString> {
-        let this = self.read(cx);
-        let user_ids = this.collaborators().values().map(|c| c.user_id);
-        this.user_store().read(cx).participant_names(user_ids, cx)
-    }
-}
-
 pub trait SemanticsProvider {
     fn hover(
         &self,
@@ -21817,16 +21766,8 @@ impl EditorSnapshot {
     pub fn remote_selections_in_range<'a>(
         &'a self,
         range: &'a Range<Anchor>,
-        collaboration_hub: &dyn CollaborationHub,
         cx: &'a App,
     ) -> impl 'a + Iterator<Item = RemoteSelection> {
-        let participant_names = collaboration_hub.user_names(cx);
-        let participant_indices = collaboration_hub.user_participant_indices(cx);
-        let collaborators_by_peer_id = collaboration_hub.collaborators(cx);
-        let collaborators_by_replica_id = collaborators_by_peer_id
-            .values()
-            .map(|collaborator| (collaborator.replica_id, collaborator))
-            .collect::<HashMap<_, _>>();
         self.buffer_snapshot
             .selections_in_range(range, false)
             .filter_map(move |(replica_id, line_mode, cursor_shape, selection)| {
@@ -21836,26 +21777,15 @@ impl EditorSnapshot {
                         selection,
                         cursor_shape,
                         line_mode,
-                        collaborator_id: CollaboratorId::Agent,
-                        user_name: Some("Agent".into()),
                         color: cx.theme().players().agent(),
                     })
                 } else {
-                    let collaborator = collaborators_by_replica_id.get(&replica_id)?;
-                    let participant_index = participant_indices.get(&collaborator.user_id).copied();
-                    let user_name = participant_names.get(&collaborator.user_id).cloned();
                     Some(RemoteSelection {
                         replica_id,
                         selection,
                         cursor_shape,
                         line_mode,
-                        collaborator_id: CollaboratorId::PeerId(collaborator.peer_id),
-                        user_name,
-                        color: if let Some(index) = participant_index {
-                            cx.theme().players().color_for_participant(index.0)
-                        } else {
-                            cx.theme().players().absent()
-                        },
+                        color: cx.theme().players().absent(),
                     })
                 }
             })

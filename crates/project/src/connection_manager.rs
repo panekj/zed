@@ -62,16 +62,6 @@ impl Manager {
         });
 
         self.projects.insert(project.downgrade());
-        if self.maintain_connection.is_none() {
-            self.maintain_connection = Some(cx.spawn({
-                let client = self.client.clone();
-                async move |_, cx| {
-                    Self::maintain_connection(manager, client.clone(), cx)
-                        .await
-                        .log_err()
-                }
-            }));
-        }
     }
 
     fn reconnected(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {

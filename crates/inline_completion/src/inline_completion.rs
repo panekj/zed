@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-use client::EditPredictionUsage;
 use gpui::{App, Context, Entity, SharedString};
 use language::Buffer;
 use project::Project;
@@ -65,10 +64,6 @@ pub trait EditPredictionProvider: 'static + Sized {
         DataCollectionState::Unsupported
     }
 
-    fn usage(&self, _cx: &App) -> Option<EditPredictionUsage> {
-        None
-    }
-
     fn toggle_data_collection(&mut self, _cx: &mut App) {}
     fn is_enabled(
         &self,
@@ -117,7 +112,6 @@ pub trait InlineCompletionProviderHandle {
     fn show_completions_in_menu(&self) -> bool;
     fn show_tab_accept_marker(&self) -> bool;
     fn data_collection_state(&self, cx: &App) -> DataCollectionState;
-    fn usage(&self, cx: &App) -> Option<EditPredictionUsage>;
     fn toggle_data_collection(&self, cx: &mut App);
     fn needs_terms_acceptance(&self, cx: &App) -> bool;
     fn is_refreshing(&self, cx: &App) -> bool;
@@ -168,10 +162,6 @@ where
 
     fn data_collection_state(&self, cx: &App) -> DataCollectionState {
         self.read(cx).data_collection_state(cx)
-    }
-
-    fn usage(&self, cx: &App) -> Option<EditPredictionUsage> {
-        self.read(cx).usage(cx)
     }
 
     fn toggle_data_collection(&self, cx: &mut App) {

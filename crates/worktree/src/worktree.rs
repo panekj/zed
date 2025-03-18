@@ -1003,20 +1003,7 @@ impl Worktree {
         match self {
             Worktree::Local(this) => this.expand_entry(entry_id, cx),
             Worktree::Remote(this) => {
-                let response = this.client.request(proto::ExpandProjectEntry {
-                    project_id: this.project_id,
-                    entry_id: entry_id.to_proto(),
-                });
-                Some(cx.spawn(async move |this, cx| {
-                    let response = response.await?;
-                    this.update(cx, |this, _| {
-                        this.as_remote_mut()
-                            .unwrap()
-                            .wait_for_snapshot(response.worktree_scan_id as usize)
-                    })?
-                    .await?;
-                    Ok(())
-                }))
+                unimplemented!()
             }
         }
     }
@@ -1029,20 +1016,7 @@ impl Worktree {
         match self {
             Worktree::Local(this) => this.expand_all_for_entry(entry_id, cx),
             Worktree::Remote(this) => {
-                let response = this.client.request(proto::ExpandAllForProjectEntry {
-                    project_id: this.project_id,
-                    entry_id: entry_id.to_proto(),
-                });
-                Some(cx.spawn(async move |this, cx| {
-                    let response = response.await?;
-                    this.update(cx, |this, _| {
-                        this.as_remote_mut()
-                            .unwrap()
-                            .wait_for_snapshot(response.worktree_scan_id as usize)
-                    })?
-                    .await?;
-                    Ok(())
-                }))
+                unimplemented!()
             }
         }
     }
