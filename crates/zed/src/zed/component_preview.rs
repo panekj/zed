@@ -3,11 +3,6 @@
 //! A view for exploring Zed components.
 
 mod persistence;
-mod preview_support;
-
-use agent::{TextThreadStore, ThreadStore};
-use agent_ui::ActiveThread;
-use client::UserStore;
 use collections::HashMap;
 use component::{ComponentId, ComponentMetadata, ComponentStatus, components};
 use gpui::{
@@ -17,18 +12,12 @@ use gpui::{ListState, ScrollHandle, ScrollStrategy, UniformListScrollHandle};
 use languages::LanguageRegistry;
 use notifications::status_toast::{StatusToast, ToastIcon};
 use persistence::COMPONENT_PREVIEW_DB;
-use preview_support::active_thread::{
-    load_preview_text_thread_store, load_preview_thread_store, static_active_thread,
-};
 use project::Project;
 use std::{iter::Iterator, ops::Range, sync::Arc};
 use ui::{ButtonLike, Divider, HighlightedLabel, ListItem, ListSubHeader, Tooltip, prelude::*};
 use ui_input::SingleLineInput;
-use util::ResultExt as _;
-use workspace::{
-    AppState, Item, ItemId, SerializableItem, Workspace, WorkspaceId, delete_unloaded_items,
-    item::ItemEvent,
-};
+use workspace::{AppState, ItemId, SerializableItem, delete_unloaded_items};
+use workspace::{Item, Workspace, WorkspaceId, item::ItemEvent};
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     workspace::register_serializable_item::<ComponentPreview>(cx);
@@ -45,14 +34,12 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                 let app_state = app_state.clone();
 
                 let language_registry = app_state.languages.clone();
-                let user_store = app_state.user_store.clone();
 
                 let component_preview = cx.new(|cx| {
                     ComponentPreview::new(
                         weak_workspace.clone(),
                         project.clone(),
                         language_registry,
-                        user_store,
                         None,
                         None,
                         window,
@@ -104,7 +91,7 @@ enum PreviewPage {
 
 struct ComponentPreview {
     active_page: PreviewPage,
-    active_thread: Option<Entity<ActiveThread>>,
+    active_thread: Option<Entity<()>>,
     component_list: ListState,
     component_map: HashMap<ComponentId, ComponentMetadata>,
     components: Vec<ComponentMetadata>,
@@ -115,9 +102,6 @@ struct ComponentPreview {
     language_registry: Arc<LanguageRegistry>,
     nav_scroll_handle: UniformListScrollHandle,
     project: Entity<Project>,
-    text_thread_store: Option<Entity<TextThreadStore>>,
-    thread_store: Option<Entity<ThreadStore>>,
-    user_store: Entity<UserStore>,
     workspace: WeakEntity<Workspace>,
     workspace_id: Option<WorkspaceId>,
     _view_scroll_handle: ScrollHandle,
@@ -128,39 +112,11 @@ impl ComponentPreview {
         workspace: WeakEntity<Workspace>,
         project: Entity<Project>,
         language_registry: Arc<LanguageRegistry>,
-        user_store: Entity<UserStore>,
         selected_index: impl Into<Option<usize>>,
         active_page: Option<PreviewPage>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> anyhow::Result<Self> {
-        let workspace_clone = workspace.clone();
-        let project_clone = project.clone();
-
-        cx.spawn_in(window, async move |entity, cx| {
-            let thread_store_future =
-                load_preview_thread_store(workspace_clone.clone(), project_clone.clone(), cx);
-            let text_thread_store_future =
-                load_preview_text_thread_store(workspace_clone.clone(), project_clone.clone(), cx);
-
-            let (thread_store_result, text_thread_store_result) =
-                futures::join!(thread_store_future, text_thread_store_future);
-
-            if let (Some(thread_store), Some(text_thread_store)) = (
-                thread_store_result.log_err(),
-                text_thread_store_result.log_err(),
-            ) {
-                entity
-                    .update_in(cx, |this, window, cx| {
-                        this.thread_store = Some(thread_store.clone());
-                        this.text_thread_store = Some(text_thread_store.clone());
-                        this.create_active_thread(window, cx);
-                    })
-                    .ok();
-            }
-        })
-        .detach();
-
         let component_registry = Arc::new(components());
         let sorted_components = component_registry.sorted_components();
         let selected_index = selected_index.into().unwrap_or(0);
@@ -198,9 +154,6 @@ impl ComponentPreview {
             language_registry,
             nav_scroll_handle: UniformListScrollHandle::new(),
             project,
-            text_thread_store: None,
-            thread_store: None,
-            user_store,
             workspace,
             workspace_id: None,
             _view_scroll_handle: ScrollHandle::new(),
@@ -216,38 +169,6 @@ impl ComponentPreview {
         window.focus(&focus_handle);
 
         Ok(component_preview)
-    }
-
-    pub fn create_active_thread(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> &mut Self {
-        let workspace = self.workspace.clone();
-        let language_registry = self.language_registry.clone();
-        let weak_handle = self.workspace.clone();
-        if let Some(workspace) = workspace.upgrade() {
-            let project = workspace.read(cx).project().clone();
-            if let Some((thread_store, text_thread_store)) = self
-                .thread_store
-                .clone()
-                .zip(self.text_thread_store.clone())
-            {
-                let active_thread = static_active_thread(
-                    weak_handle,
-                    project,
-                    language_registry,
-                    thread_store,
-                    text_thread_store,
-                    window,
-                    cx,
-                );
-                self.active_thread = Some(active_thread);
-                cx.notify();
-            }
-        }
-
-        self
     }
 
     pub fn active_page_id(&self, _cx: &App) -> ActivePageId {
@@ -630,16 +551,8 @@ impl ComponentPreview {
 
         // Check if the component's scope is Agent
         if scope == ComponentScope::Agent {
-            if let Some(active_thread) = self.active_thread.clone() {
-                if let Some(element) = agent_ui::get_agent_preview(
-                    &component.id(),
-                    self.workspace.clone(),
-                    active_thread,
-                    window,
-                    cx,
-                ) {
-                    preview_container = preview_container.child(element);
-                } else if let Some(preview) = component.preview() {
+            if let Some(_) = self.active_thread.clone() {
+                if let Some(preview) = component.preview() {
                     preview_container = preview_container.children(preview(window, cx));
                 }
             }
@@ -713,10 +626,7 @@ impl ComponentPreview {
                     .h_full()
                     .py_8()
                     .bg(cx.theme().colors().panel_background)
-                    .children(self.active_thread.clone().map(|thread| thread.clone()))
-                    .when_none(&self.active_thread.clone(), |this| {
-                        this.child("No active thread")
-                    }),
+                    .child("No active thread"),
             )
             .into_any_element()
     }
@@ -889,7 +799,6 @@ impl Item for ComponentPreview {
         Self: Sized,
     {
         let language_registry = self.language_registry.clone();
-        let user_store = self.user_store.clone();
         let weak_workspace = self.workspace.clone();
         let project = self.project.clone();
         let selected_index = self.cursor_index;
@@ -899,7 +808,6 @@ impl Item for ComponentPreview {
             weak_workspace,
             project,
             language_registry,
-            user_store,
             selected_index,
             Some(active_page),
             window,
@@ -957,7 +865,6 @@ impl SerializableItem for ComponentPreview {
                 Err(_) => ActivePageId::default(),
             };
 
-        let user_store = project.read(cx).user_store().clone();
         let language_registry = project.read(cx).languages().clone();
         let preview_page = if deserialized_active_page.0 == ActivePageId::default().0 {
             Some(PreviewPage::default())
@@ -975,7 +882,6 @@ impl SerializableItem for ComponentPreview {
         };
 
         window.spawn(cx, async move |cx| {
-            let user_store = user_store.clone();
             let language_registry = language_registry.clone();
             let weak_workspace = workspace.clone();
             let project = project.clone();
@@ -985,7 +891,6 @@ impl SerializableItem for ComponentPreview {
                         weak_workspace,
                         project,
                         language_registry,
-                        user_store,
                         None,
                         preview_page,
                         window,
@@ -1039,22 +944,18 @@ impl SerializableItem for ComponentPreview {
 pub struct ComponentPreviewPage {
     // languages: Arc<LanguageRegistry>,
     component: ComponentMetadata,
-    workspace: WeakEntity<Workspace>,
-    active_thread: Option<Entity<ActiveThread>>,
 }
 
 impl ComponentPreviewPage {
     pub fn new(
         component: ComponentMetadata,
-        workspace: WeakEntity<Workspace>,
-        active_thread: Option<Entity<ActiveThread>>,
+        _: WeakEntity<Workspace>,
+        _: Option<Entity<()>>,
         // languages: Arc<LanguageRegistry>
     ) -> Self {
         Self {
             // languages,
             component,
-            workspace,
-            active_thread,
         }
     }
 
@@ -1127,40 +1028,22 @@ impl ComponentPreviewPage {
     }
 
     fn render_preview(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        // Try to get agent preview first if we have an active thread
-        let maybe_agent_preview = if let Some(active_thread) = self.active_thread.as_ref() {
-            agent_ui::get_agent_preview(
-                &self.component.id(),
-                self.workspace.clone(),
-                active_thread.clone(),
-                window,
-                cx,
-            )
-        } else {
-            None
-        };
-
-        let content = if let Some(ag_preview) = maybe_agent_preview {
-            // Use agent preview if available
-            ag_preview
-        } else if let Some(preview) = self.component.preview() {
-            // Fall back to component preview
-            preview(window, cx).unwrap_or_else(|| {
-                div()
-                    .child("Failed to load preview. This path should be unreachable")
-                    .into_any_element()
-            })
-        } else {
-            div().child("No preview available").into_any_element()
-        };
-
         v_flex()
             .size_full()
             .flex_1()
             .px_12()
             .py_6()
             .bg(cx.theme().colors().editor_background)
-            .child(content)
+            .child(if let Some(preview) = self.component.preview() {
+                // Fall back to component preview
+                preview(window, cx).unwrap_or_else(|| {
+                    div()
+                        .child("Failed to load preview. This path should be unreachable")
+                        .into_any_element()
+                })
+            } else {
+                div().child("No preview available").into_any_element()
+            })
     }
 }
 

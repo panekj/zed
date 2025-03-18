@@ -1,6 +1,7 @@
 use std::process::Command;
 
 fn main() {
+    #[cfg(target_os = "macos")]
     if cfg!(target_os = "macos") {
         println!("cargo:rustc-env=MACOSX_DEPLOYMENT_TARGET=10.15.7");
 

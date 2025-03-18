@@ -1,5 +1,4 @@
 mod application_menu;
-mod collab;
 mod onboarding_banner;
 pub mod platform_title_bar;
 mod platforms;
@@ -18,9 +17,7 @@ use crate::application_menu::{
     ActivateDirection, ActivateMenuLeft, ActivateMenuRight, OpenApplicationMenu,
 };
 
-use auto_update::AutoUpdateStatus;
-use call::ActiveCall;
-use client::{Client, UserStore, zed_urls};
+use client::Client;
 use gpui::{
     Action, AnyElement, App, Context, Corner, Element, Entity, Focusable, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Render, StatefulInteractiveElement, Styled,
@@ -125,7 +122,6 @@ pub fn init(cx: &mut App) {
 pub struct TitleBar {
     platform_titlebar: Entity<PlatformTitleBar>,
     project: Entity<Project>,
-    user_store: Entity<UserStore>,
     client: Arc<Client>,
     workspace: WeakEntity<Workspace>,
     application_menu: Option<Entity<ApplicationMenu>>,
@@ -172,8 +168,6 @@ impl Render for TitleBar {
                 .into_any_element(),
         );
 
-        children.push(self.render_collaborator_list(window, cx).into_any_element());
-
         if title_bar_settings.show_onboarding_banner {
             children.push(self.banner.clone().into_any_element())
         }
@@ -183,7 +177,6 @@ impl Render for TitleBar {
                 .gap_1()
                 .pr_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .children(self.render_call_controls(window, cx))
                 .map(|el| {
                     let status = self.client.status();
                     let status = &*status.borrow();
@@ -244,9 +237,7 @@ impl TitleBar {
         cx: &mut Context<Self>,
     ) -> Self {
         let project = workspace.project().clone();
-        let user_store = workspace.app_state().user_store.clone();
         let client = workspace.app_state().client.clone();
-        let active_call = ActiveCall::global(cx);
 
         let platform_style = PlatformStyle::platform();
         let application_menu = match platform_style {
@@ -268,10 +259,8 @@ impl TitleBar {
                 cx.notify()
             }),
         );
-        subscriptions.push(cx.subscribe(&project, |_, _, _: &project::Event, cx| cx.notify()));
-        subscriptions.push(cx.observe(&active_call, |this, _, cx| this.active_call_changed(cx)));
+        subscriptions.push(cx.subscribe(&project, |_, _, _, cx| cx.notify()));
         subscriptions.push(cx.observe_window_activation(window, Self::window_activation_changed));
-        subscriptions.push(cx.observe(&user_store, |_, _, cx| cx.notify()));
 
         let banner = cx.new(|cx| {
             OnboardingBanner::new(
@@ -291,7 +280,6 @@ impl TitleBar {
             application_menu,
             workspace: workspace.weak_handle(),
             project,
-            user_store,
             client,
             _subscriptions: subscriptions,
             banner,
@@ -398,34 +386,7 @@ impl TitleBar {
             );
         }
 
-        let host = self.project.read(cx).host()?;
-        let host_user = self.user_store.read(cx).get_cached_user(host.user_id)?;
-        let participant_index = self
-            .user_store
-            .read(cx)
-            .participant_indices()
-            .get(&host_user.id)?;
-        Some(
-            Button::new("project_owner_trigger", host_user.github_login.clone())
-                .color(Color::Player(participant_index.0))
-                .style(ButtonStyle::Subtle)
-                .label_size(LabelSize::Small)
-                .tooltip(Tooltip::text(format!(
-                    "{} is sharing this project. Click to follow.",
-                    host_user.github_login
-                )))
-                .on_click({
-                    let host_peer_id = host.peer_id;
-                    cx.listener(move |this, _, window, cx| {
-                        this.workspace
-                            .update(cx, |workspace, cx| {
-                                workspace.follow(host_peer_id, window, cx);
-                            })
-                            .log_err();
-                    })
-                })
-                .into_any_element(),
-        )
+        None
     }
 
     pub fn render_project_name(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -523,15 +484,6 @@ impl TitleBar {
     }
 
     fn window_activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if window.is_window_active() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(Some(&self.project), cx))
-                .detach_and_log_err(cx);
-        } else if cx.active_window().is_none() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(None, cx))
-                .detach_and_log_err(cx);
-        }
         self.workspace
             .update(cx, |workspace, cx| {
                 workspace.update_active_view_for_followers(window, cx);
@@ -539,30 +491,10 @@ impl TitleBar {
             .ok();
     }
 
-    fn active_call_changed(&mut self, cx: &mut Context<Self>) {
-        cx.notify();
-    }
-
-    fn share_project(&mut self, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.share_project(project, cx))
-            .detach_and_log_err(cx);
-    }
-
-    fn unshare_project(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.unshare_project(project, cx))
-            .log_err();
-    }
-
     fn render_connection_status(
         &self,
         status: &client::Status,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match status {
             client::Status::ConnectionError
@@ -576,33 +508,12 @@ impl TitleBar {
                     .tooltip(Tooltip::text("Disconnected"))
                     .into_any_element(),
             ),
-            client::Status::UpgradeRequired => {
-                let auto_updater = auto_update::AutoUpdater::get(cx);
-                let label = match auto_updater.map(|auto_update| auto_update.read(cx).status()) {
-                    Some(AutoUpdateStatus::Updated { .. }) => "Please restart Zed to Collaborate",
-                    Some(AutoUpdateStatus::Installing { .. })
-                    | Some(AutoUpdateStatus::Downloading { .. })
-                    | Some(AutoUpdateStatus::Checking) => "Updating...",
-                    Some(AutoUpdateStatus::Idle) | Some(AutoUpdateStatus::Errored) | None => {
-                        "Please update Zed to Collaborate"
-                    }
-                };
-
-                Some(
-                    Button::new("connection-status", label)
-                        .label_size(LabelSize::Small)
-                        .on_click(|_, window, cx| {
-                            if let Some(auto_updater) = auto_update::AutoUpdater::get(cx) {
-                                if auto_updater.read(cx).status().is_updated() {
-                                    workspace::reload(&Default::default(), cx);
-                                    return;
-                                }
-                            }
-                            auto_update::check(&Default::default(), window, cx);
-                        })
-                        .into_any_element(),
-                )
-            }
+            client::Status::UpgradeRequired => Some(
+                Button::new("connection-status", "No updates")
+                    .label_size(LabelSize::Small)
+                    .on_click(|_, _window, _cx| return)
+                    .into_any_element(),
+            ),
             _ => None,
         }
     }
@@ -626,66 +537,11 @@ impl TitleBar {
     }
 
     pub fn render_user_menu_button(&mut self, cx: &mut Context<Self>) -> impl Element {
-        let user_store = self.user_store.read(cx);
-        if let Some(user) = user_store.current_user() {
-            let has_subscription_period = self.user_store.read(cx).subscription_period().is_some();
-            let plan = self.user_store.read(cx).current_plan().filter(|_| {
-                // Since the user might be on the legacy free plan we filter based on whether we have a subscription period.
-                has_subscription_period
-            });
-
-            let user_avatar = user.avatar_uri.clone();
-            let free_chip_bg = cx
-                .theme()
-                .colors()
-                .editor_background
-                .opacity(0.5)
-                .blend(cx.theme().colors().text_accent.opacity(0.05));
-
-            let pro_chip_bg = cx
-                .theme()
-                .colors()
-                .editor_background
-                .opacity(0.5)
-                .blend(cx.theme().colors().text_accent.opacity(0.2));
-
-            PopoverMenu::new("user-menu")
-                .anchor(Corner::TopRight)
-                .menu(move |window, cx| {
-                    ContextMenu::build(window, cx, |menu, _, _cx| {
-                        let user_login = user.github_login.clone();
-
-                        let (plan_name, label_color, bg_color) = match plan {
-                            None | Some(proto::Plan::Free) => {
-                                ("Free", Color::Default, free_chip_bg)
-                            }
-                            Some(proto::Plan::ZedProTrial) => {
-                                ("Pro Trial", Color::Accent, pro_chip_bg)
-                            }
-                            Some(proto::Plan::ZedPro) => ("Pro", Color::Accent, pro_chip_bg),
-                        };
-
-                        menu.custom_entry(
-                            move |_window, _cx| {
-                                let user_login = user_login.clone();
-
-                                h_flex()
-                                    .w_full()
-                                    .justify_between()
-                                    .child(Label::new(user_login))
-                                    .child(
-                                        Chip::new(plan_name.to_string())
-                                            .bg_color(bg_color)
-                                            .label_color(label_color),
-                                    )
-                                    .into_any_element()
-                            },
-                            move |_, cx| {
-                                cx.open_url(&zed_urls::account_url(cx));
-                            },
-                        )
-                        .separator()
-                        .action("Settings", zed_actions::OpenSettings.boxed_clone())
+        PopoverMenu::new("user-menu")
+            .anchor(Corner::TopRight)
+            .menu(|window, cx| {
+                ContextMenu::build(window, cx, |menu, _, _| {
+                    menu.action("Settings", zed_actions::OpenSettings.boxed_clone())
                         .action("Key Bindings", Box::new(keybindings::OpenKeymapEditor))
                         .action(
                             "Themes…",
@@ -699,57 +555,12 @@ impl TitleBar {
                             "Extensions",
                             zed_actions::Extensions::default().boxed_clone(),
                         )
-                        .separator()
-                        .action("Sign Out", client::SignOut.boxed_clone())
-                    })
-                    .into()
                 })
-                .trigger_with_tooltip(
-                    ButtonLike::new("user-menu")
-                        .child(
-                            h_flex()
-                                .gap_0p5()
-                                .children(
-                                    TitleBarSettings::get_global(cx)
-                                        .show_user_picture
-                                        .then(|| Avatar::new(user_avatar)),
-                                )
-                                .child(
-                                    Icon::new(IconName::ChevronDown)
-                                        .size(IconSize::Small)
-                                        .color(Color::Muted),
-                                ),
-                        )
-                        .style(ButtonStyle::Subtle),
-                    Tooltip::text("Toggle User Menu"),
-                )
-                .anchor(gpui::Corner::TopRight)
-        } else {
-            PopoverMenu::new("user-menu")
-                .anchor(Corner::TopRight)
-                .menu(|window, cx| {
-                    ContextMenu::build(window, cx, |menu, _, _| {
-                        menu.action("Settings", zed_actions::OpenSettings.boxed_clone())
-                            .action("Key Bindings", Box::new(keybindings::OpenKeymapEditor))
-                            .action(
-                                "Themes…",
-                                zed_actions::theme_selector::Toggle::default().boxed_clone(),
-                            )
-                            .action(
-                                "Icon Themes…",
-                                zed_actions::icon_theme_selector::Toggle::default().boxed_clone(),
-                            )
-                            .action(
-                                "Extensions",
-                                zed_actions::Extensions::default().boxed_clone(),
-                            )
-                    })
-                    .into()
-                })
-                .trigger_with_tooltip(
-                    IconButton::new("user-menu", IconName::ChevronDown).icon_size(IconSize::Small),
-                    Tooltip::text("Toggle User Menu"),
-                )
-        }
+                .into()
+            })
+            .trigger_with_tooltip(
+                IconButton::new("user-menu", IconName::ChevronDown).icon_size(IconSize::Small),
+                Tooltip::text("Toggle User Menu"),
+            )
     }
 }

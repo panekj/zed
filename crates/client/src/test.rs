@@ -1,8 +1,8 @@
-use crate::{Client, Connection, Credentials, EstablishConnectionError, UserStore};
+use crate::{Client, Connection, Credentials, EstablishConnectionError};
 use anyhow::{Context as _, Result, anyhow};
 use chrono::Duration;
 use futures::{StreamExt, stream::BoxStream};
-use gpui::{AppContext as _, BackgroundExecutor, Entity, TestAppContext};
+use gpui::{AppContext as _, BackgroundExecutor, TestAppContext};
 use parking_lot::Mutex;
 use rpc::{
     ConnectionId, Peer, Receipt, TypedEnvelope,
@@ -198,23 +198,6 @@ impl FakeServer {
 
     fn connection_id(&self) -> ConnectionId {
         self.state.lock().connection_id.expect("not connected")
-    }
-
-    pub async fn build_user_store(
-        &self,
-        client: Arc<Client>,
-        cx: &mut TestAppContext,
-    ) -> Entity<UserStore> {
-        let user_store = cx.new(|cx| UserStore::new(client, cx));
-        assert_eq!(
-            self.receive::<proto::GetUsers>()
-                .await
-                .unwrap()
-                .payload
-                .user_ids,
-            &[self.user_id]
-        );
-        user_store
     }
 }
 

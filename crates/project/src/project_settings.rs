@@ -1,6 +1,5 @@
 use anyhow::Context as _;
 use collections::HashMap;
-use context_server::ContextServerCommand;
 use dap::adapters::DebugAdapterName;
 use fs::Fs;
 use futures::StreamExt as _;
@@ -56,10 +55,6 @@ pub struct ProjectSettings {
     #[serde(default)]
     pub dap: HashMap<DebugAdapterName, DapSettings>,
 
-    /// Settings for context servers used for AI-related features.
-    #[serde(default)]
-    pub context_servers: HashMap<Arc<str>, ContextServerSettings>,
-
     /// Configuration for Diagnostics-related features.
     #[serde(default)]
     pub diagnostics: DiagnosticsSettings,
@@ -89,29 +84,6 @@ pub struct DapSettings {
     pub args: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug)]
-#[serde(tag = "source", rename_all = "snake_case")]
-pub enum ContextServerSettings {
-    Custom {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
-
-        #[serde(flatten)]
-        command: ContextServerCommand,
-    },
-    Extension {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
-        /// The settings for this context server specified by the extension.
-        ///
-        /// Consult the documentation for the context server to see what settings
-        /// are supported.
-        settings: serde_json::Value,
-    },
-}
-
 /// Common language server settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct GlobalLspSettings {
@@ -120,29 +92,6 @@ pub struct GlobalLspSettings {
     /// Default: `true`
     #[serde(default = "default_true")]
     pub button: bool,
-}
-
-impl ContextServerSettings {
-    pub fn default_extension() -> Self {
-        Self::Extension {
-            enabled: true,
-            settings: serde_json::json!({}),
-        }
-    }
-
-    pub fn enabled(&self) -> bool {
-        match self {
-            ContextServerSettings::Custom { enabled, .. } => *enabled,
-            ContextServerSettings::Extension { enabled, .. } => *enabled,
-        }
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        match self {
-            ContextServerSettings::Custom { enabled: e, .. } => *e = enabled,
-            ContextServerSettings::Extension { enabled: e, .. } => *e = enabled,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -577,40 +526,6 @@ impl Settings for ProjectSettings {
                     ..Default::default()
                 })
             }
-        }
-
-        #[derive(Deserialize)]
-        struct VsCodeContextServerCommand {
-            command: String,
-            args: Option<Vec<String>>,
-            env: Option<HashMap<String, String>>,
-            // note: we don't support envFile and type
-        }
-        impl From<VsCodeContextServerCommand> for ContextServerCommand {
-            fn from(cmd: VsCodeContextServerCommand) -> Self {
-                Self {
-                    path: cmd.command,
-                    args: cmd.args.unwrap_or_default(),
-                    env: cmd.env,
-                }
-            }
-        }
-        if let Some(mcp) = vscode.read_value("mcp").and_then(|v| v.as_object()) {
-            current
-                .context_servers
-                .extend(mcp.iter().filter_map(|(k, v)| {
-                    Some((
-                        k.clone().into(),
-                        ContextServerSettings::Custom {
-                            enabled: true,
-                            command: serde_json::from_value::<VsCodeContextServerCommand>(
-                                v.clone(),
-                            )
-                            .ok()?
-                            .into(),
-                        },
-                    ))
-                }));
         }
 
         // TODO: translate lsp settings for rust-analyzer and other popular ones to old.lsp

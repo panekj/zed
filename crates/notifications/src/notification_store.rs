@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
-use channel::{ChannelMessage, ChannelMessageId, ChannelStore};
-use client::{ChannelId, Client, UserStore};
+use client::Client;
 use collections::HashMap;
 use db::smol::stream::StreamExt;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Global, Task};
@@ -10,8 +9,8 @@ use sum_tree::{Bias, SumTree};
 use time::OffsetDateTime;
 use util::ResultExt;
 
-pub fn init(client: Arc<Client>, user_store: Entity<UserStore>, cx: &mut App) {
-    let notification_store = cx.new(|cx| NotificationStore::new(client, user_store, cx));
+pub fn init(client: Arc<Client>, cx: &mut App) {
+    let notification_store = cx.new(|cx| NotificationStore::new(client, cx));
     cx.set_global(GlobalNotificationStore(notification_store));
 }
 
@@ -21,9 +20,8 @@ impl Global for GlobalNotificationStore {}
 
 pub struct NotificationStore {
     client: Arc<Client>,
-    user_store: Entity<UserStore>,
-    channel_messages: HashMap<u64, ChannelMessage>,
-    channel_store: Entity<ChannelStore>,
+    channel_messages: HashMap<u64, ()>,
+    channel_store: (),
     notifications: SumTree<NotificationEntry>,
     loaded_all_notifications: bool,
     _watch_connection_status: Task<Option<()>>,
@@ -74,7 +72,7 @@ impl NotificationStore {
         cx.global::<GlobalNotificationStore>().0.clone()
     }
 
-    pub fn new(client: Arc<Client>, user_store: Entity<UserStore>, cx: &mut Context<Self>) -> Self {
+    pub fn new(client: Arc<Client>, cx: &mut Context<Self>) -> Self {
         let mut connection_status = client.status();
         let watch_connection_status = cx.spawn(async move |this, cx| {
             while let Some(status) = connection_status.next().await {
@@ -97,7 +95,7 @@ impl NotificationStore {
         });
 
         Self {
-            channel_store: ChannelStore::global(cx),
+            channel_store: (),
             notifications: Default::default(),
             loaded_all_notifications: false,
             channel_messages: Default::default(),
@@ -107,7 +105,6 @@ impl NotificationStore {
                 client.add_message_handler(cx.weak_entity(), Self::handle_delete_notification),
                 client.add_message_handler(cx.weak_entity(), Self::handle_update_notification),
             ],
-            user_store,
             client,
         }
     }
@@ -120,7 +117,7 @@ impl NotificationStore {
         self.notifications.summary().unread_count
     }
 
-    pub fn channel_message_for_id(&self, id: u64) -> Option<&ChannelMessage> {
+    pub fn channel_message_for_id(&self, id: u64) -> Option<&()> {
         self.channel_messages.get(&id)
     }
 
@@ -228,29 +225,7 @@ impl NotificationStore {
         envelope: TypedEnvelope<proto::UpdateNotification>,
         mut cx: AsyncApp,
     ) -> Result<()> {
-        this.update(&mut cx, |this, cx| {
-            if let Some(notification) = envelope.payload.notification {
-                if let Some(rpc::Notification::ChannelMessageMention { message_id, .. }) =
-                    Notification::from_proto(&notification)
-                {
-                    let fetch_message_task = this.channel_store.update(cx, |this, cx| {
-                        this.fetch_channel_messages(vec![message_id], cx)
-                    });
-
-                    cx.spawn(async move |this, cx| {
-                        let messages = fetch_message_task.await?;
-                        this.update(cx, move |this, cx| {
-                            for message in messages {
-                                this.channel_messages.insert(message_id, message);
-                            }
-                            cx.notify();
-                        })
-                    })
-                    .detach_and_log_err(cx)
-                }
-            }
-            Ok(())
-        })?
+        this.update(&mut cx, |this, cx| Ok(()))?
     }
 
     async fn add_notifications(
@@ -305,18 +280,8 @@ impl NotificationStore {
             }
         }
 
-        let (user_store, channel_store) = this.read_with(cx, |this, _| {
-            (this.user_store.clone(), this.channel_store.clone())
-        })?;
+        let channel_store = this.read_with(cx, |this, _| this.channel_store.clone())?;
 
-        user_store
-            .update(cx, |store, cx| store.get_users(user_ids, cx))?
-            .await?;
-        let messages = channel_store
-            .update(cx, |store, cx| {
-                store.fetch_channel_messages(message_ids, cx)
-            })?
-            .await?;
         this.update(cx, |this, cx| {
             if options.clear_old {
                 cx.emit(NotificationEvent::NotificationsUpdated {
@@ -331,15 +296,6 @@ impl NotificationStore {
             if options.includes_first {
                 this.loaded_all_notifications = true;
             }
-
-            this.channel_messages
-                .extend(messages.into_iter().filter_map(|message| {
-                    if let ChannelMessageId::Saved(id) = message.id {
-                        Some((id, message))
-                    } else {
-                        None
-                    }
-                }));
 
             this.splice_notifications(
                 notifications
@@ -415,27 +371,10 @@ impl NotificationStore {
 
     pub fn respond_to_notification(
         &mut self,
-        notification: Notification,
-        response: bool,
-        cx: &mut Context<Self>,
+        _notification: Notification,
+        _response: bool,
+        _cx: &mut Context<Self>,
     ) {
-        match notification {
-            Notification::ContactRequest { sender_id } => {
-                self.user_store
-                    .update(cx, |store, cx| {
-                        store.respond_to_contact_request(sender_id, response, cx)
-                    })
-                    .detach();
-            }
-            Notification::ChannelInvitation { channel_id, .. } => {
-                self.channel_store
-                    .update(cx, |store, cx| {
-                        store.respond_to_channel_invite(ChannelId(channel_id), response, cx)
-                    })
-                    .detach();
-            }
-            _ => {}
-        }
     }
 }
 

@@ -308,8 +308,6 @@ actions!(
     [
         /// Accepts the full edit prediction.
         AcceptEditPrediction,
-        /// Accepts a partial Copilot suggestion.
-        AcceptPartialCopilotSuggestion,
         /// Accepts a partial edit prediction.
         AcceptPartialEditPrediction,
         /// Adds a cursor above the current selection.
