@@ -9,7 +9,6 @@ pub fn app_menus() -> Vec<Menu> {
             name: "Zed".into(),
             items: vec![
                 MenuItem::action("About Zed…", zed_actions::About),
-                MenuItem::action("Check for Updates", auto_update::Check),
                 MenuItem::separator(),
                 MenuItem::submenu(Menu {
                     name: "Settings".into(),
@@ -207,24 +206,11 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
                 MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
                 MenuItem::action("Show Welcome", workspace::Welcome),
-                MenuItem::action("Give Feedback...", zed_actions::feedback::GiveFeedback),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",
                     super::OpenBrowser {
                         url: "https://zed.dev/docs".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Zed Twitter",
-                    super::OpenBrowser {
-                        url: "https://twitter.com/zeddotdev".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Join the Team",
-                    super::OpenBrowser {
-                        url: "https://zed.dev/jobs".into(),
                     },
                 ),
             ],

@@ -562,27 +562,18 @@ async fn download_remote_server_binary(
 }
 
 fn build_remote_server_update_request_body(cx: &AsyncApp) -> Result<UpdateRequestBody> {
-    let (installation_id, release_channel, telemetry_enabled, is_staff) = cx.update(|cx| {
-        let telemetry = Client::global(cx).telemetry().clone();
-        let is_staff = telemetry.is_staff();
-        let installation_id = telemetry.installation_id();
+    let release_channel = cx.update(|cx| {
         let release_channel =
             ReleaseChannel::try_global(cx).map(|release_channel| release_channel.display_name());
-        let telemetry_enabled = TelemetrySettings::get_global(cx).metrics;
 
-        (
-            installation_id,
-            release_channel,
-            telemetry_enabled,
-            is_staff,
-        )
+        release_channel
     })?;
 
     Ok(UpdateRequestBody {
-        installation_id,
+        installation_id: None,
         release_channel,
-        telemetry: telemetry_enabled,
-        is_staff,
+        telemetry: false,
+        is_staff: None,
         destination: "remote",
     })
 }

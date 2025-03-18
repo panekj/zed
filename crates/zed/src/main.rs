@@ -420,7 +420,6 @@ fn main() {
         AppState::set_global(Arc::downgrade(&app_state), cx);
 
         auto_update::init(client.http_client(), cx);
-        auto_update_ui::init(cx);
         reliability::init(
             client.http_client(),
             system_id.as_ref().map(|id| id.to_string()),
@@ -484,7 +483,6 @@ fn main() {
         notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         title_bar::init(cx);
         git_ui::init(cx);
-        feedback::init(cx);
         markdown_preview::init(cx);
         welcome::init(cx);
         settings_ui::init(cx);
