@@ -1,30 +1,21 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::{onboarding_event, ZED_PREDICT_DATA_COLLECTION_CHOICE};
-use anyhow::Context as _;
-use client::{Client, UserStore};
-use db::kvp::KEY_VALUE_STORE;
-use fs::Fs;
+use crate::onboarding_event;
+use client::Client;
 use gpui::{
-    ease_in_out, svg, Animation, AnimationExt as _, ClickEvent, DismissEvent, Entity, EventEmitter,
+    ease_in_out, svg, Animation, AnimationExt as _, ClickEvent, DismissEvent, EventEmitter,
     FocusHandle, Focusable, MouseDownEvent, Render,
 };
-use language::language_settings::{AllLanguageSettings, EditPredictionProvider};
-use settings::{update_settings_file, Settings};
-use ui::{prelude::*, Checkbox, TintColor};
-use util::ResultExt;
+use settings::Settings;
+use ui::{prelude::*, TintColor};
 use workspace::{notifications::NotifyTaskExt, ModalView, Workspace};
 
 /// Introduces user to Zed's Edit Prediction feature and terms of service
 pub struct ZedPredictModal {
-    user_store: Entity<UserStore>,
     client: Arc<Client>,
-    fs: Arc<dyn Fs>,
     focus_handle: FocusHandle,
     sign_in_status: SignInStatus,
-    terms_of_service: bool,
     data_collection_expanded: bool,
-    data_collection_opted_in: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -40,29 +31,18 @@ enum SignInStatus {
 impl ZedPredictModal {
     pub fn toggle(
         workspace: &mut Workspace,
-        user_store: Entity<UserStore>,
+        _: (),
         client: Arc<Client>,
-        fs: Arc<dyn Fs>,
+        _: (),
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
         workspace.toggle_modal(window, cx, |_window, cx| Self {
-            user_store,
             client,
-            fs,
             focus_handle: cx.focus_handle(),
             sign_in_status: SignInStatus::Idle,
-            terms_of_service: false,
             data_collection_expanded: false,
-            data_collection_opted_in: false,
         });
-    }
-
-    fn view_terms(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
-        cx.open_url("https://zed.dev/terms-of-service");
-        cx.notify();
-
-        onboarding_event!("ToS Link Clicked");
     }
 
     fn view_blog(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -70,68 +50,6 @@ impl ZedPredictModal {
         cx.notify();
 
         onboarding_event!("Blog Link clicked");
-    }
-
-    fn inline_completions_doc(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
-        cx.open_url("https://zed.dev/docs/configuring-zed#disabled-globs");
-        cx.notify();
-
-        onboarding_event!("Docs Link Clicked");
-    }
-
-    fn accept_and_enable(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let task = self
-            .user_store
-            .update(cx, |this, cx| this.accept_terms_of_service(cx));
-        let fs = self.fs.clone();
-
-        cx.spawn(async move |this, cx| {
-            task.await?;
-
-            let mut data_collection_opted_in = false;
-            this.update(cx, |this, _cx| {
-                data_collection_opted_in = this.data_collection_opted_in;
-            })
-            .ok();
-
-            KEY_VALUE_STORE
-                .write_kvp(
-                    ZED_PREDICT_DATA_COLLECTION_CHOICE.into(),
-                    data_collection_opted_in.to_string(),
-                )
-                .await
-                .log_err();
-
-            // Make sure edit prediction provider setting is using the new key
-            let settings_path = paths::settings_file().as_path();
-            let settings_path = fs.canonicalize(settings_path).await.with_context(|| {
-                format!("Failed to canonicalize settings path {:?}", settings_path)
-            })?;
-
-            if let Some(settings) = fs.load(&settings_path).await.log_err() {
-                if let Some(new_settings) =
-                    migrator::migrate_edit_prediction_provider_settings(&settings)?
-                {
-                    fs.atomic_write(settings_path, new_settings).await?;
-                }
-            }
-
-            this.update(cx, |this, cx| {
-                update_settings_file::<AllLanguageSettings>(this.fs.clone(), cx, move |file, _| {
-                    file.features
-                        .get_or_insert(Default::default())
-                        .edit_prediction_provider = Some(EditPredictionProvider::Zed);
-                });
-
-                cx.emit(DismissEvent);
-            })
-        })
-        .detach_and_notify_err(window, cx);
-
-        onboarding_event!(
-            "Enable Clicked",
-            data_collection_opted_in = self.data_collection_opted_in,
-        );
     }
 
     fn sign_in(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -294,163 +212,7 @@ impl Render for ZedPredictModal {
             .icon_color(Color::Muted)
             .on_click(cx.listener(Self::view_blog));
 
-        if self.user_store.read(cx).current_user().is_some() {
-            let copy = match self.sign_in_status {
-                SignInStatus::Idle => {
-                    "Zed can now predict your next edit on every keystroke. Powered by Zeta, our open-source, open-dataset language model."
-                }
-                SignInStatus::SignedIn => "Almost there! Ensure you:",
-                SignInStatus::Waiting => unreachable!(),
-            };
-
-            let accordion_icons = if self.data_collection_expanded {
-                (IconName::ChevronUp, IconName::ChevronDown)
-            } else {
-                (IconName::ChevronDown, IconName::ChevronUp)
-            };
-
-            fn label_item(label_text: impl Into<SharedString>) -> impl Element {
-                Label::new(label_text).color(Color::Muted).into_element()
-            }
-
-            fn info_item(label_text: impl Into<SharedString>) -> impl Element {
-                h_flex()
-                    .items_start()
-                    .gap_2()
-                    .child(
-                        div()
-                            .mt_1p5()
-                            .child(Icon::new(IconName::Check).size(IconSize::XSmall)),
-                    )
-                    .child(div().w_full().child(label_item(label_text)))
-            }
-
-            fn multiline_info_item<E1: Into<SharedString>, E2: IntoElement>(
-                first_line: E1,
-                second_line: E2,
-            ) -> impl Element {
-                v_flex()
-                    .child(info_item(first_line))
-                    .child(div().pl_5().child(second_line))
-            }
-
-            base.child(Label::new(copy).color(Color::Muted))
-                .child(
-                    h_flex()
-                        .child(
-                            Checkbox::new("tos-checkbox", self.terms_of_service.into())
-                                .fill()
-                                .label("I have read and accept the")
-                                .on_click(cx.listener(move |this, state, _window, cx| {
-                                    this.terms_of_service = *state == ToggleState::Selected;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Button::new("view-tos", "Terms of Service")
-                                .icon(IconName::ArrowUpRight)
-                                .icon_size(IconSize::Indicator)
-                                .icon_color(Color::Muted)
-                                .on_click(cx.listener(Self::view_terms)),
-                        ),
-                )
-                .child(
-                    v_flex()
-                        .child(
-                            h_flex()
-                                .flex_wrap()
-                                .child(
-                                    Checkbox::new(
-                                        "training-data-checkbox",
-                                        self.data_collection_opted_in.into(),
-                                    )
-                                    .label("Contribute to the open dataset when editing open source.")
-                                    .fill()
-                                    .on_click(cx.listener(
-                                        move |this, state, _window, cx| {
-                                            this.data_collection_opted_in =
-                                                *state == ToggleState::Selected;
-                                            cx.notify()
-                                        },
-                                    )),
-                                )
-                                .child(
-                                    Button::new("learn-more", "Learn More")
-                                        .icon(accordion_icons.0)
-                                        .icon_size(IconSize::Indicator)
-                                        .icon_color(Color::Muted)
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.data_collection_expanded =
-                                                !this.data_collection_expanded;
-                                            cx.notify();
-
-                                            if this.data_collection_expanded {
-                                                onboarding_event!("Data Collection Learn More Clicked");
-                                            }
-                                        })),
-                                ),
-                        )
-                        .when(self.data_collection_expanded, |element| {
-                            element.child(
-                                v_flex()
-                                    .mt_2()
-                                    .p_2()
-                                    .rounded_sm()
-                                    .bg(cx.theme().colors().editor_background.opacity(0.5))
-                                    .border_1()
-                                    .border_color(cx.theme().colors().border_variant)
-                                    .child(
-                                        div().child(
-                                            Label::new("To improve edit predictions, please consider contributing to our open dataset based on your interactions within open source repositories.")
-                                                .mb_1()
-                                        )
-                                    )
-                                    .child(info_item(
-                                        "We collect data exclusively from open source projects.",
-                                    ))
-                                    .child(info_item(
-                                        "Zed automatically detects if your project is open source.",
-                                    ))
-                                    .child(info_item("Toggle participation at any time via the status bar menu."))
-                                    .child(multiline_info_item(
-                                        "If turned on, this setting applies for all open source repositories",
-                                        label_item("you open in Zed.")
-                                    ))
-                                    .child(multiline_info_item(
-                                        "Files with sensitive data, like `.env`, are excluded by default",
-                                        h_flex()
-                                            .w_full()
-                                            .flex_wrap()
-                                            .child(label_item("via the"))
-                                            .child(
-                                                Button::new("doc-link", "disabled_globs").on_click(
-                                                    cx.listener(Self::inline_completions_doc),
-                                                ),
-                                            )
-                                            .child(label_item("setting.")),
-                                    )),
-                            )
-                        }),
-                )
-                .child(
-                    v_flex()
-                        .mt_2()
-                        .gap_2()
-                        .w_full()
-                        .child(
-                            Button::new("accept-tos", "Enable Edit Prediction")
-                                .disabled(!self.terms_of_service)
-                                .style(ButtonStyle::Tinted(TintColor::Accent))
-                                .full_width()
-                                .on_click(cx.listener(Self::accept_and_enable)),
-                        )
-                        .child(blog_post_button),
-                )
-        } else {
-            base.child(
-                Label::new("To set Zed as your edit prediction provider, please sign in.")
-                    .color(Color::Muted),
-            )
+        base.child(Label::new("Edit prediction provider unavailable").color(Color::Muted))
             .child(
                 v_flex()
                     .mt_2()
@@ -458,13 +220,12 @@ impl Render for ZedPredictModal {
                     .w_full()
                     .child(
                         Button::new("accept-tos", "Sign in with GitHub")
-                            .disabled(self.sign_in_status == SignInStatus::Waiting)
+                            .disabled(true)
                             .style(ButtonStyle::Tinted(TintColor::Accent))
                             .full_width()
                             .on_click(cx.listener(Self::sign_in)),
                     )
                     .child(blog_post_button),
             )
-        }
     }
 }

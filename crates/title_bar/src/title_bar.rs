@@ -37,7 +37,6 @@ use ui::{
 use util::ResultExt;
 use workspace::{notifications::NotifyResultExt, Workspace};
 use zed_actions::{OpenBrowser, OpenRecent, OpenRemote};
-use zeta::ZedPredictBanner;
 
 #[cfg(feature = "stories")]
 pub use stories::*;
@@ -126,7 +125,6 @@ pub struct TitleBar {
     should_move: bool,
     application_menu: Option<Entity<ApplicationMenu>>,
     _subscriptions: Vec<Subscription>,
-    zed_predict_banner: Entity<ZedPredictBanner>,
     git_banner: Entity<GitBanner>,
 }
 
@@ -210,27 +208,7 @@ impl Render for TitleBar {
                             })
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
                     )
-                    .child(self.render_collaborator_list(window, cx))
-                    .child(self.zed_predict_banner.clone())
-                    .child(self.git_banner.clone())
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .pr_1()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .children(self.render_call_controls(window, cx))
-                            .map(|el| {
-                                let status = self.client.status();
-                                let status = &*status.borrow();
-                                if matches!(status, client::Status::Connected { .. }) {
-                                    el.child(self.render_user_menu_button(cx))
-                                } else {
-                                    el.children(self.render_connection_status(status, cx))
-                                        .child(self.render_sign_in_button(cx))
-                                        .child(self.render_user_menu_button(cx))
-                                }
-                            }),
-                    ),
+                    .child(self.git_banner.clone()),
             )
             .when(!window.is_fullscreen(), |title_bar| {
                 match self.platform_style {
@@ -315,7 +293,6 @@ impl TitleBar {
         subscriptions.push(cx.observe_window_activation(window, Self::window_activation_changed));
         subscriptions.push(cx.observe(&user_store, |_, _, cx| cx.notify()));
 
-        let zed_predict_banner = cx.new(ZedPredictBanner::new);
         let git_banner = cx.new(GitBanner::new);
 
         Self {
@@ -329,7 +306,6 @@ impl TitleBar {
             user_store,
             client,
             _subscriptions: subscriptions,
-            zed_predict_banner,
             git_banner,
         }
     }

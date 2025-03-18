@@ -11,7 +11,6 @@ pub(crate) mod windows_only_instance;
 use anyhow::Context as _;
 pub use app_menus::*;
 use assets::Assets;
-use assistant_context_editor::AssistantPanelDelegate;
 use breadcrumbs::Breadcrumbs;
 use client::{zed_urls, ZED_URL_SCHEME};
 use collections::VecDeque;
@@ -40,7 +39,6 @@ use paths::{
 };
 use project::{DirectoryLister, ProjectItem};
 use project_panel::ProjectPanel;
-use prompt_store::PromptBuilder;
 use quick_action_bar::QuickActionBar;
 use recent_projects::open_ssh_project;
 use release_channel::{AppCommitSha, ReleaseChannel};
@@ -158,11 +156,7 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowO
     }
 }
 
-pub fn initialize_workspace(
-    app_state: Arc<AppState>,
-    prompt_builder: Arc<PromptBuilder>,
-    cx: &mut App,
-) {
+pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
     let mut _on_close_subscription = bind_on_window_closed(cx);
     cx.observe_global::<SettingsStore>(move |cx| {
         _on_close_subscription = bind_on_window_closed(cx);
@@ -256,7 +250,7 @@ pub fn initialize_workspace(
                 .unwrap_or(true)
         });
 
-        initialize_panels(prompt_builder.clone(), window, cx);
+        initialize_panels(window, cx);
         register_actions(app_state.clone(), workspace, window, cx);
 
         workspace.focus_handle(cx).focus(window);
@@ -387,17 +381,8 @@ fn show_software_emulation_warning_if_needed(
     }
 }
 
-fn initialize_panels(
-    prompt_builder: Arc<PromptBuilder>,
-    window: &mut Window,
-    cx: &mut Context<Workspace>,
-) {
-    let assistant2_feature_flag =
-        cx.wait_for_flag_or_timeout::<feature_flags::Assistant2FeatureFlag>(Duration::from_secs(5));
-
-    let prompt_builder = prompt_builder.clone();
-
-    cx.spawn_in(window, async move |workspace_handle, cx| {
+fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) {
+    cx.spawn_in(window, |workspace_handle, mut cx| async move {
         let project_panel = ProjectPanel::load(workspace_handle.clone(), cx.clone());
         let outline_panel = OutlinePanel::load(workspace_handle.clone(), cx.clone());
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
@@ -453,68 +438,6 @@ fn initialize_panels(
             let app_state = workspace.app_state().clone();
             let git_panel = cx.new(|cx| GitPanel::new(entity, project, app_state, window, cx));
             workspace.add_panel(git_panel, window, cx);
-        })?;
-
-        let is_assistant2_enabled = if cfg!(test) {
-            false
-        } else {
-            assistant2_feature_flag.await
-        };
-
-        let (assistant_panel, assistant2_panel) = if is_assistant2_enabled {
-            let assistant2_panel = assistant2::AssistantPanel::load(
-                workspace_handle.clone(),
-                prompt_builder,
-                cx.clone(),
-            )
-            .await?;
-
-            (None, Some(assistant2_panel))
-        } else {
-            let assistant_panel = assistant::AssistantPanel::load(
-                workspace_handle.clone(),
-                prompt_builder.clone(),
-                cx.clone(),
-            )
-            .await?;
-
-            (Some(assistant_panel), None)
-        };
-
-        workspace_handle.update_in(cx, |workspace, window, cx| {
-            if let Some(assistant2_panel) = assistant2_panel {
-                workspace.add_panel(assistant2_panel, window, cx);
-            }
-
-            if let Some(assistant_panel) = assistant_panel {
-                workspace.add_panel(assistant_panel, window, cx);
-            }
-
-            // Register the actions that are shared between `assistant` and `assistant2`.
-            //
-            // We need to do this here instead of within the individual `init`
-            // functions so that we only register the actions once.
-            //
-            // Once we ship `assistant2` we can push this back down into `assistant2::assistant_panel::init`.
-            if is_assistant2_enabled {
-                <dyn AssistantPanelDelegate>::set_global(
-                    Arc::new(assistant2::ConcreteAssistantPanelDelegate),
-                    cx,
-                );
-
-                workspace
-                    .register_action(assistant2::AssistantPanel::toggle_focus)
-                    .register_action(assistant2::InlineAssistant::inline_assist);
-            } else {
-                <dyn AssistantPanelDelegate>::set_global(
-                    Arc::new(assistant::assistant_panel::ConcreteAssistantPanelDelegate),
-                    cx,
-                );
-
-                workspace
-                    .register_action(assistant::AssistantPanel::toggle_focus)
-                    .register_action(assistant::AssistantPanel::inline_assist);
-            }
         })?;
 
         anyhow::Ok(())
@@ -4272,26 +4195,7 @@ mod tests {
             project_panel::init(cx);
             outline_panel::init(cx);
             terminal_view::init(cx);
-            copilot::copilot_chat::init(
-                app_state.fs.clone(),
-                app_state.client.http_client().clone(),
-                cx,
-            );
             image_viewer::init(cx);
-            language_model::init(app_state.client.clone(), cx);
-            language_models::init(
-                app_state.user_store.clone(),
-                app_state.client.clone(),
-                app_state.fs.clone(),
-                cx,
-            );
-            let prompt_builder = PromptBuilder::load(app_state.fs.clone(), false, cx);
-            assistant::init(
-                app_state.fs.clone(),
-                app_state.client.clone(),
-                prompt_builder.clone(),
-                cx,
-            );
             repl::init(app_state.fs.clone(), cx);
             repl::notebook::init(cx);
             tasks_ui::init(cx);
@@ -4300,7 +4204,7 @@ mod tests {
             );
             project::debugger::dap_store::DapStore::init(&app_state.client.clone().into());
             debugger_ui::init(cx);
-            initialize_workspace(app_state.clone(), prompt_builder, cx);
+            initialize_workspace(app_state.clone(), cx);
             search::init(cx);
             app_state
         })

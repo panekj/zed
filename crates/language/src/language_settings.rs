@@ -208,10 +208,8 @@ impl LanguageSettings {
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EditPredictionProvider {
-    None,
     #[default]
-    Copilot,
-    Supermaven,
+    None,
     Zed,
 }
 
@@ -219,9 +217,7 @@ impl EditPredictionProvider {
     pub fn is_zed(&self) -> bool {
         match self {
             EditPredictionProvider::Zed => true,
-            EditPredictionProvider::None
-            | EditPredictionProvider::Copilot
-            | EditPredictionProvider::Supermaven => false,
+            EditPredictionProvider::None => false,
         }
     }
 }

@@ -9,12 +9,9 @@ use gpui::{AppContext as _, AsyncApp, BackgroundExecutor, Entity};
 use http_client::{HttpClient, Method};
 use language::LanguageRegistry;
 use node_runtime::NodeRuntime;
-use open_ai::OpenAiEmbeddingModel;
 use project::Project;
 use reqwest_client::ReqwestClient;
-use semantic_index::{
-    EmbeddingProvider, OpenAiEmbeddingProvider, ProjectIndex, SemanticDb, Status,
-};
+use semantic_index::{ProjectIndex, Status};
 use serde::{Deserialize, Serialize};
 use settings::SettingsStore;
 use smol::channel::bounded;
@@ -294,13 +291,6 @@ async fn run_evaluation(
     let evaluations = fs::read(&evaluations_path).expect("failed to read evaluations.json");
     let evaluations: Vec<EvaluationProject> = serde_json::from_slice(&evaluations).unwrap();
 
-    let embedding_provider = Arc::new(OpenAiEmbeddingProvider::new(
-        http_client.clone(),
-        OpenAiEmbeddingModel::TextEmbedding3Small,
-        open_ai::OPEN_AI_API_URL.to_string(),
-        api_key,
-    ));
-
     let language_registry = Arc::new(LanguageRegistry::new(executor.clone()));
     cx.update(|cx| languages::init(language_registry.clone(), node_runtime.clone(), cx))
         .unwrap();
@@ -361,7 +351,7 @@ async fn run_evaluation(
             &repo_dir,
             &mut counts,
             project,
-            embedding_provider.clone(),
+            (),
             fs.clone(),
             cx,
         )
@@ -404,141 +394,11 @@ async fn run_eval_project(
     repo_dir: &Path,
     counts: &mut Counts,
     project: Entity<Project>,
-    embedding_provider: Arc<dyn EmbeddingProvider>,
+    embedding_provider: (),
     fs: Arc<dyn Fs>,
     cx: &mut AsyncApp,
 ) -> Result<(), anyhow::Error> {
-    let mut semantic_index = SemanticDb::new(repo_db_path, embedding_provider, cx).await?;
-
-    let (worktree, _) = project
-        .update(cx, |project, cx| {
-            project.find_or_create_worktree(repo_dir, true, cx)
-        })?
-        .await?;
-
-    worktree
-        .update(cx, |worktree, _| {
-            worktree.as_local().unwrap().scan_complete()
-        })?
-        .await;
-
-    let project_index = cx.update(|cx| semantic_index.create_project_index(project.clone(), cx))?;
-    wait_for_indexing_complete(&project_index, cx, Some(Duration::from_secs(120))).await;
-
-    for query in evaluation_project.queries {
-        let results = {
-            // Retry search up to 3 times in case of timeout, network failure, etc.
-            let mut retries_remaining = 3;
-            let mut result;
-
-            loop {
-                match cx.update(|cx| {
-                    let project_index = project_index.read(cx);
-                    project_index.search(vec![query.query.clone()], SEARCH_RESULT_LIMIT, cx)
-                }) {
-                    Ok(task) => match task.await {
-                        Ok(answer) => {
-                            result = Ok(answer);
-                            break;
-                        }
-                        Err(err) => {
-                            result = Err(err);
-                        }
-                    },
-                    Err(err) => {
-                        result = Err(err);
-                    }
-                }
-
-                if retries_remaining > 0 {
-                    eprintln!(
-                        "Retrying search after it failed on query {:?} with {:?}",
-                        query, result
-                    );
-                    retries_remaining -= 1;
-                } else {
-                    eprintln!(
-                        "Ran out of retries; giving up on search which failed on query {:?} with {:?}",
-                        query, result
-                    );
-                    break;
-                }
-            }
-
-            SemanticDb::load_results(result?, &fs.clone(), &cx).await?
-        };
-
-        let mut project_covered_result_count = 0;
-        let mut project_overlapped_result_count = 0;
-        let mut project_covered_file_count = 0;
-        let mut covered_result_indices = Vec::new();
-        for expected_result in &query.expected_results {
-            let mut file_matched = false;
-            let mut range_overlapped = false;
-            let mut range_covered = false;
-
-            for (ix, result) in results.iter().enumerate() {
-                if result.path.as_ref() == Path::new(&expected_result.file) {
-                    file_matched = true;
-                    let start_matched = result.row_range.contains(&expected_result.lines.start());
-                    let end_matched = result.row_range.contains(&expected_result.lines.end());
-
-                    if start_matched || end_matched {
-                        range_overlapped = true;
-                    }
-
-                    if start_matched && end_matched {
-                        range_covered = true;
-                        covered_result_indices.push(ix);
-                        break;
-                    }
-                }
-            }
-
-            if range_covered {
-                project_covered_result_count += 1
-            };
-            if range_overlapped {
-                project_overlapped_result_count += 1
-            };
-            if file_matched {
-                project_covered_file_count += 1
-            };
-        }
-        let outcome_repo = evaluation_project.repo.clone();
-
-        let query_results = EvaluationQueryOutcome {
-            repo: outcome_repo,
-            query: query.query,
-            total_result_count: query.expected_results.len(),
-            covered_result_count: project_covered_result_count,
-            overlapped_result_count: project_overlapped_result_count,
-            covered_file_count: project_covered_file_count,
-            expected_results: query.expected_results,
-            actual_results: results
-                .iter()
-                .map(|result| EvaluationSearchResult {
-                    file: result.path.to_string_lossy().to_string(),
-                    lines: result.row_range.clone(),
-                })
-                .collect(),
-            covered_result_indices,
-        };
-
-        counts.overlapped_results += query_results.overlapped_result_count;
-        counts.covered_results += query_results.covered_result_count;
-        counts.covered_files += query_results.covered_file_count;
-        counts.total_results += query_results.total_result_count;
-
-        println!("{}", serde_json::to_string(&query_results)?);
-    }
-
-    user_store.update(cx, |_, _| {
-        drop(semantic_index);
-        drop(project);
-        drop(worktree);
-        drop(project_index);
-    })
+    return Err(anyhow::anyhow!("Err"));
 }
 
 async fn wait_for_indexing_complete(

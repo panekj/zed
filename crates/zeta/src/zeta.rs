@@ -30,7 +30,6 @@ use input_excerpt::excerpt_for_cursor_position;
 use language::{
     text_diff, Anchor, Buffer, BufferSnapshot, EditPreview, OffsetRangeExt, ToOffset, ToPoint,
 };
-use language_model::{LlmApiToken, RefreshLlmTokenListener};
 use postage::watch;
 use project::Project;
 use release_channel::AppVersion;
@@ -192,8 +191,6 @@ pub struct Zeta {
     shown_completions: VecDeque<InlineCompletion>,
     rated_completions: HashSet<InlineCompletionId>,
     data_collection_choice: Entity<DataCollectionChoice>,
-    llm_token: LlmApiToken,
-    _llm_token_subscription: Subscription,
     /// Whether the terms of service have been accepted.
     tos_accepted: bool,
     /// Whether an update to a newer version of Zed is required to continue using Zeta.
@@ -243,8 +240,6 @@ impl Zeta {
         user_store: Entity<UserStore>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let refresh_llm_token_listener = RefreshLlmTokenListener::global(cx);
-
         let data_collection_choice = Self::load_data_collection_choices();
         let data_collection_choice = cx.new(|_| data_collection_choice);
 
@@ -256,19 +251,6 @@ impl Zeta {
             rated_completions: HashSet::default(),
             registered_buffers: HashMap::default(),
             data_collection_choice,
-            llm_token: LlmApiToken::default(),
-            _llm_token_subscription: cx.subscribe(
-                &refresh_llm_token_listener,
-                |this, _listener, _event, cx| {
-                    let client = this.client.clone();
-                    let llm_token = this.llm_token.clone();
-                    cx.spawn(async move |_this, _cx| {
-                        llm_token.refresh(&client).await?;
-                        anyhow::Ok(())
-                    })
-                    .detach_and_log_err(cx);
-                },
-            ),
             tos_accepted: user_store
                 .read(cx)
                 .current_user_has_accepted_terms()
@@ -379,7 +361,6 @@ impl Zeta {
 
         let zeta = cx.entity();
         let client = self.client.clone();
-        let llm_token = self.llm_token.clone();
         let app_version = AppVersion::global(cx);
 
         let buffer = buffer.clone();
@@ -468,7 +449,6 @@ impl Zeta {
 
             let response = perform_predict_edits(PerformPredictEditsParams {
                 client,
-                llm_token,
                 app_version,
                 body,
             })
@@ -724,14 +704,12 @@ and then another
         async move {
             let PerformPredictEditsParams {
                 client,
-                llm_token,
                 app_version,
                 body,
                 ..
             } = params;
 
             let http_client = client.http_client();
-            let mut token = llm_token.acquire(&client).await?;
             let mut did_retry = false;
 
             loop {
@@ -748,7 +726,6 @@ and then another
                     };
                 let request = request_builder
                     .header("Content-Type", "application/json")
-                    .header("Authorization", format!("Bearer {}", token))
                     .body(serde_json::to_string(&body)?.into())?;
 
                 let mut response = http_client.send(request).await?;
@@ -776,7 +753,6 @@ and then another
                         .is_some()
                 {
                     did_retry = true;
-                    token = llm_token.refresh(&client).await?;
                 } else {
                     let mut body = String::new();
                     response.body_mut().read_to_string(&mut body).await?;
@@ -1013,26 +989,12 @@ and then another
     }
 
     fn load_data_collection_choices() -> DataCollectionChoice {
-        let choice = KEY_VALUE_STORE
-            .read_kvp(ZED_PREDICT_DATA_COLLECTION_CHOICE)
-            .log_err()
-            .flatten();
-
-        match choice.as_deref() {
-            Some("true") => DataCollectionChoice::Enabled,
-            Some("false") => DataCollectionChoice::Disabled,
-            Some(_) => {
-                log::error!("unknown value in '{ZED_PREDICT_DATA_COLLECTION_CHOICE}'");
-                DataCollectionChoice::NotAnswered
-            }
-            None => DataCollectionChoice::NotAnswered,
-        }
+        DataCollectionChoice::Disabled
     }
 }
 
 struct PerformPredictEditsParams {
     pub client: Arc<Client>,
-    pub llm_token: LlmApiToken,
     pub app_version: SemanticVersion,
     pub body: PredictEditsBody,
 }
@@ -1866,9 +1828,6 @@ mod tests {
         });
 
         let client = cx.update(|cx| Client::new(Arc::new(FakeSystemClock::new()), http_client, cx));
-        cx.update(|cx| {
-            RefreshLlmTokenListener::register(client.clone(), cx);
-        });
         let server = FakeServer::for_client(42, &client, cx).await;
         let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
         let zeta = cx.new(|cx| Zeta::new(None, client, user_store, cx));
@@ -1919,9 +1878,6 @@ mod tests {
         });
 
         let client = cx.update(|cx| Client::new(Arc::new(FakeSystemClock::new()), http_client, cx));
-        cx.update(|cx| {
-            RefreshLlmTokenListener::register(client.clone(), cx);
-        });
         let server = FakeServer::for_client(42, &client, cx).await;
         let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
         let zeta = cx.new(|cx| Zeta::new(None, client, user_store, cx));

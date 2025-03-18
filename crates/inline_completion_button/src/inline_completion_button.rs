@@ -1,6 +1,5 @@
 use anyhow::Result;
 use client::UserStore;
-use copilot::{Copilot, Status};
 use editor::{
     actions::{ShowEditPrediction, ToggleEditPrediction},
     scroll::Autoscroll,
@@ -26,23 +25,14 @@ use std::{
     sync::{Arc, LazyLock},
     time::Duration,
 };
-use supermaven::{AccountStatus, Supermaven};
 use ui::{
     prelude::*, Clickable, ContextMenu, ContextMenuEntry, IconButton, IconButtonShape, Indicator,
     PopoverMenu, PopoverMenuHandle, Tooltip,
 };
-use workspace::{
-    create_and_open_local_file, item::ItemHandle, notifications::NotificationId, StatusItemView,
-    Toast, Workspace,
-};
-use zed_actions::OpenBrowser;
+use workspace::{create_and_open_local_file, item::ItemHandle, StatusItemView, Workspace};
 use zeta::RateCompletions;
 
 actions!(edit_prediction, [ToggleMenu]);
-
-const COPILOT_SETTINGS_URL: &str = "https://github.com/settings/copilot";
-
-struct CopilotErrorToast;
 
 pub struct InlineCompletionButton {
     editor_subscription: Option<(Subscription, usize)>,
@@ -57,179 +47,12 @@ pub struct InlineCompletionButton {
     popover_menu_handle: PopoverMenuHandle<ContextMenu>,
 }
 
-enum SupermavenButtonStatus {
-    Ready,
-    Errored(String),
-    NeedsActivation(String),
-    Initializing,
-}
-
 impl Render for InlineCompletionButton {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let all_language_settings = all_language_settings(None, cx);
 
         match all_language_settings.edit_predictions.provider {
             EditPredictionProvider::None => div(),
-
-            EditPredictionProvider::Copilot => {
-                let Some(copilot) = Copilot::global(cx) else {
-                    return div();
-                };
-                let status = copilot.read(cx).status();
-
-                let enabled = self.editor_enabled.unwrap_or(false);
-
-                let icon = match status {
-                    Status::Error(_) => IconName::CopilotError,
-                    Status::Authorized => {
-                        if enabled {
-                            IconName::Copilot
-                        } else {
-                            IconName::CopilotDisabled
-                        }
-                    }
-                    _ => IconName::CopilotInit,
-                };
-
-                if let Status::Error(e) = status {
-                    return div().child(
-                        IconButton::new("copilot-error", icon)
-                            .icon_size(IconSize::Small)
-                            .on_click(cx.listener(move |_, _, window, cx| {
-                                if let Some(workspace) = window.root::<Workspace>().flatten() {
-                                    workspace.update(cx, |workspace, cx| {
-                                        workspace.show_toast(
-                                            Toast::new(
-                                                NotificationId::unique::<CopilotErrorToast>(),
-                                                format!("Copilot can't be started: {}", e),
-                                            )
-                                            .on_click(
-                                                "Reinstall Copilot",
-                                                |_, cx| {
-                                                    if let Some(copilot) = Copilot::global(cx) {
-                                                        copilot
-                                                            .update(cx, |copilot, cx| {
-                                                                copilot.reinstall(cx)
-                                                            })
-                                                            .detach();
-                                                    }
-                                                },
-                                            ),
-                                            cx,
-                                        );
-                                    });
-                                }
-                            }))
-                            .tooltip(|window, cx| {
-                                Tooltip::for_action("GitHub Copilot", &ToggleMenu, window, cx)
-                            }),
-                    );
-                }
-                let this = cx.entity().clone();
-
-                div().child(
-                    PopoverMenu::new("copilot")
-                        .menu(move |window, cx| {
-                            Some(match status {
-                                Status::Authorized => this.update(cx, |this, cx| {
-                                    this.build_copilot_context_menu(window, cx)
-                                }),
-                                _ => this.update(cx, |this, cx| {
-                                    this.build_copilot_start_menu(window, cx)
-                                }),
-                            })
-                        })
-                        .anchor(Corner::BottomRight)
-                        .trigger_with_tooltip(
-                            IconButton::new("copilot-icon", icon),
-                            |window, cx| {
-                                Tooltip::for_action("GitHub Copilot", &ToggleMenu, window, cx)
-                            },
-                        )
-                        .with_handle(self.popover_menu_handle.clone()),
-                )
-            }
-
-            EditPredictionProvider::Supermaven => {
-                let Some(supermaven) = Supermaven::global(cx) else {
-                    return div();
-                };
-
-                let supermaven = supermaven.read(cx);
-
-                let status = match supermaven {
-                    Supermaven::Starting => SupermavenButtonStatus::Initializing,
-                    Supermaven::FailedDownload { error } => {
-                        SupermavenButtonStatus::Errored(error.to_string())
-                    }
-                    Supermaven::Spawned(agent) => {
-                        let account_status = agent.account_status.clone();
-                        match account_status {
-                            AccountStatus::NeedsActivation { activate_url } => {
-                                SupermavenButtonStatus::NeedsActivation(activate_url.clone())
-                            }
-                            AccountStatus::Unknown => SupermavenButtonStatus::Initializing,
-                            AccountStatus::Ready => SupermavenButtonStatus::Ready,
-                        }
-                    }
-                    Supermaven::Error { error } => {
-                        SupermavenButtonStatus::Errored(error.to_string())
-                    }
-                };
-
-                let icon = status.to_icon();
-                let tooltip_text = status.to_tooltip();
-                let has_menu = status.has_menu();
-                let this = cx.entity().clone();
-                let fs = self.fs.clone();
-
-                return div().child(
-                    PopoverMenu::new("supermaven")
-                        .menu(move |window, cx| match &status {
-                            SupermavenButtonStatus::NeedsActivation(activate_url) => {
-                                Some(ContextMenu::build(window, cx, |menu, _, _| {
-                                    let fs = fs.clone();
-                                    let activate_url = activate_url.clone();
-                                    menu.entry("Sign In", None, move |_, cx| {
-                                        cx.open_url(activate_url.as_str())
-                                    })
-                                    .entry(
-                                        "Use Copilot",
-                                        None,
-                                        move |_, cx| {
-                                            set_completion_provider(
-                                                fs.clone(),
-                                                cx,
-                                                EditPredictionProvider::Copilot,
-                                            )
-                                        },
-                                    )
-                                }))
-                            }
-                            SupermavenButtonStatus::Ready => Some(this.update(cx, |this, cx| {
-                                this.build_supermaven_context_menu(window, cx)
-                            })),
-                            _ => None,
-                        })
-                        .anchor(Corner::BottomRight)
-                        .trigger_with_tooltip(
-                            IconButton::new("supermaven-icon", icon),
-                            move |window, cx| {
-                                if has_menu {
-                                    Tooltip::for_action(
-                                        tooltip_text.clone(),
-                                        &ToggleMenu,
-                                        window,
-                                        cx,
-                                    )
-                                } else {
-                                    Tooltip::text(tooltip_text.clone())(window, cx)
-                                }
-                            },
-                        )
-                        .with_handle(self.popover_menu_handle.clone()),
-                );
-            }
 
             EditPredictionProvider::Zed => {
                 if !cx.has_flag::<PredictEditsFeatureFlag>() {
@@ -357,10 +180,6 @@ impl InlineCompletionButton {
         popover_menu_handle: PopoverMenuHandle<ContextMenu>,
         cx: &mut Context<Self>,
     ) -> Self {
-        if let Some(copilot) = Copilot::global(cx) {
-            cx.observe(&copilot, |_, _, cx| cx.notify()).detach()
-        }
-
         cx.observe_global::<SettingsStore>(move |_, cx| cx.notify())
             .detach();
 
@@ -376,27 +195,6 @@ impl InlineCompletionButton {
             fs,
             user_store,
         }
-    }
-
-    pub fn build_copilot_start_menu(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<ContextMenu> {
-        let fs = self.fs.clone();
-        ContextMenu::build(window, cx, |menu, _, _| {
-            menu.entry("Sign In", None, copilot::initiate_sign_in)
-                .entry("Disable Copilot", None, {
-                    let fs = fs.clone();
-                    move |_window, cx| hide_copilot(fs.clone(), cx)
-                })
-                .entry("Use Supermaven", None, {
-                    let fs = fs.clone();
-                    move |_window, cx| {
-                        set_completion_provider(fs.clone(), cx, EditPredictionProvider::Supermaven)
-                    }
-                })
-        })
     }
 
     pub fn build_language_settings_menu(
@@ -643,37 +441,6 @@ impl InlineCompletionButton {
         menu
     }
 
-    fn build_copilot_context_menu(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<ContextMenu> {
-        ContextMenu::build(window, cx, |menu, window, cx| {
-            self.build_language_settings_menu(menu, window, cx)
-                .separator()
-                .link(
-                    "Go to Copilot Settings",
-                    OpenBrowser {
-                        url: COPILOT_SETTINGS_URL.to_string(),
-                    }
-                    .boxed_clone(),
-                )
-                .action("Sign Out", copilot::SignOut.boxed_clone())
-        })
-    }
-
-    fn build_supermaven_context_menu(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<ContextMenu> {
-        ContextMenu::build(window, cx, |menu, window, cx| {
-            self.build_language_settings_menu(menu, window, cx)
-                .separator()
-                .action("Sign Out", supermaven::SignOut.boxed_clone())
-        })
-    }
-
     fn build_zeta_context_menu(
         &self,
         window: &mut Window,
@@ -739,33 +506,6 @@ impl StatusItemView for InlineCompletionButton {
     }
 }
 
-impl SupermavenButtonStatus {
-    fn to_icon(&self) -> IconName {
-        match self {
-            SupermavenButtonStatus::Ready => IconName::Supermaven,
-            SupermavenButtonStatus::Errored(_) => IconName::SupermavenError,
-            SupermavenButtonStatus::NeedsActivation(_) => IconName::SupermavenInit,
-            SupermavenButtonStatus::Initializing => IconName::SupermavenInit,
-        }
-    }
-
-    fn to_tooltip(&self) -> String {
-        match self {
-            SupermavenButtonStatus::Ready => "Supermaven is ready".to_string(),
-            SupermavenButtonStatus::Errored(error) => format!("Supermaven error: {}", error),
-            SupermavenButtonStatus::NeedsActivation(_) => "Supermaven needs activation".to_string(),
-            SupermavenButtonStatus::Initializing => "Supermaven initializing".to_string(),
-        }
-    }
-
-    fn has_menu(&self) -> bool {
-        match self {
-            SupermavenButtonStatus::Ready | SupermavenButtonStatus::NeedsActivation(_) => true,
-            SupermavenButtonStatus::Errored(_) | SupermavenButtonStatus::Initializing => false,
-        }
-    }
-}
-
 async fn open_disabled_globs_setting_in_editor(
     workspace: WeakEntity<Workspace>,
     cx: &mut AsyncWindowContext,
@@ -827,14 +567,6 @@ fn toggle_inline_completions_globally(fs: Arc<dyn Fs>, cx: &mut App) {
     });
 }
 
-fn set_completion_provider(fs: Arc<dyn Fs>, cx: &mut App, provider: EditPredictionProvider) {
-    update_settings_file::<AllLanguageSettings>(fs, cx, move |file, _| {
-        file.features
-            .get_or_insert(Default::default())
-            .edit_prediction_provider = Some(provider);
-    });
-}
-
 fn toggle_show_inline_completions_for_language(
     language: Arc<Language>,
     fs: Arc<dyn Fs>,
@@ -847,14 +579,6 @@ fn toggle_show_inline_completions_for_language(
             .entry(language.name())
             .or_default()
             .show_edit_predictions = Some(!show_edit_predictions);
-    });
-}
-
-fn hide_copilot(fs: Arc<dyn Fs>, cx: &mut App) {
-    update_settings_file::<AllLanguageSettings>(fs, cx, move |file, _| {
-        file.features
-            .get_or_insert(Default::default())
-            .edit_prediction_provider = Some(EditPredictionProvider::None);
     });
 }
 

@@ -27,9 +27,9 @@ pub fn init(cx: &mut App) {
                 if cx.has_flag::<PredictEditsFeatureFlag>() {
                     ZedPredictModal::toggle(
                         workspace,
-                        workspace.user_store().clone(),
+                        (),
                         workspace.client().clone(),
-                        workspace.app_state().fs.clone(),
+                        (),
                         window,
                         cx,
                     )

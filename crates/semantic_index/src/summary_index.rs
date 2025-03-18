@@ -8,10 +8,6 @@ use heed::{
     types::{SerdeBincode, Str},
     RoTxn,
 };
-use language_model::{
-    LanguageModelCompletionEvent, LanguageModelId, LanguageModelRegistry, LanguageModelRequest,
-    LanguageModelRequestMessage, Role,
-};
 use log;
 use parking_lot::Mutex;
 use project::{Entry, UpdatedEntriesSet, Worktree};
@@ -528,71 +524,8 @@ impl SummaryIndex {
         }
     }
 
-    fn summarize_code(code: &str, path: &Path, cx: &App) -> impl Future<Output = Result<String>> {
-        let start = Instant::now();
-        let (summary_model_id, use_cache): (LanguageModelId, bool) = (
-            "Qwen/Qwen2-7B-Instruct".to_string().into(), // TODO read this from the user's settings.
-            false, // qwen2 doesn't have a cache, but we should probably infer this from the model
-        );
-        let Some(model) = LanguageModelRegistry::read_global(cx)
-            .available_models(cx)
-            .find(|model| &model.id() == &summary_model_id)
-        else {
-            return cx.background_spawn(async move {
-                Err(anyhow!("Couldn't find the preferred summarization model ({:?}) in the language registry's available models", summary_model_id))
-            });
-        };
-        let utf8_path = path.to_string_lossy();
-        const PROMPT_BEFORE_CODE: &str = "Summarize what the code in this file does in 3 sentences, using no newlines or bullet points in the summary:";
-        let prompt = format!("{PROMPT_BEFORE_CODE}\n{utf8_path}:\n{code}");
-
-        log::debug!(
-            "Summarizing code by sending this prompt to {:?}: {:?}",
-            model.name(),
-            &prompt
-        );
-
-        let request = LanguageModelRequest {
-            messages: vec![LanguageModelRequestMessage {
-                role: Role::User,
-                content: vec![prompt.into()],
-                cache: use_cache,
-            }],
-            tools: Vec::new(),
-            stop: Vec::new(),
-            temperature: None,
-        };
-
-        let code_len = code.len();
-        cx.spawn(async move |cx| {
-            let stream = model.stream_completion(request, &cx);
-            cx.background_spawn(async move {
-                let answer: String = stream
-                    .await?
-                    .filter_map(|event| async {
-                        if let Ok(LanguageModelCompletionEvent::Text(text)) = event {
-                            Some(text)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-                    .await;
-
-                log::info!(
-                    "It took {:?} to summarize {:?} bytes of code.",
-                    start.elapsed(),
-                    code_len
-                );
-
-                log::debug!("Summary was: {:?}", &answer);
-
-                Ok(answer)
-            })
-            .await
-
-            // TODO if summarization failed, put it back in the backlog!
-        })
+    fn summarize_code(_: &str, _: &Path, _: &App) -> impl Future<Output = Result<String>> {
+        Task::ready(Ok(String::new()))
     }
 
     fn persist_summaries(
