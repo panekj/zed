@@ -959,38 +959,7 @@ impl ExtensionImports for WasmState {
                         })?)
                     }
                     "context_servers" => {
-                        let settings = key
-                            .and_then(|key| {
-                                ProjectSettings::get(location, cx)
-                                    .context_servers
-                                    .get(key.as_str())
-                            })
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                project::project_settings::ContextServerSettings::default_extension(
-                                )
-                            });
-
-                        match settings {
-                            project::project_settings::ContextServerSettings::Custom {
-                                enabled: _,
-                                command,
-                            } => Ok(serde_json::to_string(&settings::ContextServerSettings {
-                                command: Some(settings::CommandSettings {
-                                    path: command.path.to_str().map(|path| path.to_string()),
-                                    arguments: Some(command.args),
-                                    env: command.env.map(|env| env.into_iter().collect()),
-                                }),
-                                settings: None,
-                            })?),
-                            project::project_settings::ContextServerSettings::Extension {
-                                enabled: _,
-                                settings,
-                            } => Ok(serde_json::to_string(&settings::ContextServerSettings {
-                                command: None,
-                                settings: Some(settings),
-                            })?),
-                        }
+                        bail!("Disallowed settings category: {}", category);
                     }
                     _ => {
                         bail!("Unknown settings category: {}", category);

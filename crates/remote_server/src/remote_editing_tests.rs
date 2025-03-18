@@ -2,11 +2,9 @@
 /// The tests in this file assume that server_cx is running on Windows too.
 /// We neead to find a way to test Windows-Non-Windows interactions.
 use crate::headless_project::HeadlessProject;
-use agent::{AgentTool, ReadFileTool, ReadFileToolInput, ToolCallEventStream};
-use client::{Client, UserStore};
+use client::Client;
 use clock::FakeSystemClock;
 use collections::{HashMap, HashSet};
-use language_model::LanguageModelToolResultContent;
 
 use extension::ExtensionHostProxy;
 use fs::{FakeFs, Fs};
@@ -1703,135 +1701,6 @@ async fn test_remote_git_branches(cx: &mut TestAppContext, server_cx: &mut TestA
     assert_eq!(server_branch.name(), "totally-new-branch");
 }
 
-#[gpui::test]
-async fn test_remote_agent_fs_tool_calls(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
-    let fs = FakeFs::new(server_cx.executor());
-    fs.insert_tree(
-        path!("/project"),
-        json!({
-            "a.txt": "A",
-            "b.txt": "B",
-        }),
-    )
-    .await;
-
-    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
-    project
-        .update(cx, |project, cx| {
-            project.find_or_create_worktree(path!("/project"), true, cx)
-        })
-        .await
-        .unwrap();
-
-    let action_log = cx.new(|_| action_log::ActionLog::new(project.clone()));
-
-    let input = ReadFileToolInput {
-        path: "project/b.txt".into(),
-        start_line: None,
-        end_line: None,
-    };
-    let read_tool = Arc::new(ReadFileTool::new(project, action_log));
-    let (event_stream, _) = ToolCallEventStream::test();
-
-    let exists_result = cx.update(|cx| read_tool.clone().run(input, event_stream.clone(), cx));
-    let output = exists_result.await.unwrap();
-    assert_eq!(output, LanguageModelToolResultContent::Text("B".into()));
-
-    let input = ReadFileToolInput {
-        path: "project/c.txt".into(),
-        start_line: None,
-        end_line: None,
-    };
-    let does_not_exist_result = cx.update(|cx| read_tool.run(input, event_stream, cx));
-    does_not_exist_result.await.unwrap_err();
-}
-
-#[gpui::test]
-async fn test_remote_external_agent_server(
-    cx: &mut TestAppContext,
-    server_cx: &mut TestAppContext,
-) {
-    let fs = FakeFs::new(server_cx.executor());
-    fs.insert_tree(path!("/project"), json!({})).await;
-
-    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
-    project
-        .update(cx, |project, cx| {
-            project.find_or_create_worktree(path!("/project"), true, cx)
-        })
-        .await
-        .unwrap();
-    let names = project.update(cx, |project, cx| {
-        project
-            .agent_server_store()
-            .read(cx)
-            .external_agents()
-            .map(|name| name.to_string())
-            .collect::<Vec<_>>()
-    });
-    pretty_assertions::assert_eq!(names, ["codex", "gemini", "claude"]);
-    server_cx.update_global::<SettingsStore, _>(|settings_store, cx| {
-        settings_store
-            .set_server_settings(
-                &json!({
-                    "agent_servers": {
-                        "foo": {
-                            "command": "foo-cli",
-                            "args": ["--flag"],
-                            "env": {
-                                "VAR": "val"
-                            }
-                        }
-                    }
-                })
-                .to_string(),
-                cx,
-            )
-            .unwrap();
-    });
-    server_cx.run_until_parked();
-    cx.run_until_parked();
-    let names = project.update(cx, |project, cx| {
-        project
-            .agent_server_store()
-            .read(cx)
-            .external_agents()
-            .map(|name| name.to_string())
-            .collect::<Vec<_>>()
-    });
-    pretty_assertions::assert_eq!(names, ["gemini", "codex", "claude", "foo"]);
-    let (command, root, login) = project
-        .update(cx, |project, cx| {
-            project.agent_server_store().update(cx, |store, cx| {
-                store
-                    .get_external_agent(&"foo".into())
-                    .unwrap()
-                    .get_command(
-                        None,
-                        HashMap::from_iter([("OTHER_VAR".into(), "other-val".into())]),
-                        None,
-                        None,
-                        &mut cx.to_async(),
-                    )
-            })
-        })
-        .await
-        .unwrap();
-    assert_eq!(
-        command,
-        AgentServerCommand {
-            path: "ssh".into(),
-            args: vec!["foo-cli".into(), "--flag".into()],
-            env: Some(HashMap::from_iter([
-                ("VAR".into(), "val".into()),
-                ("OTHER_VAR".into(), "other-val".into())
-            ]))
-        }
-    );
-    assert_eq!(&PathBuf::from(root), paths::home_dir());
-    assert!(login.is_none());
-}
-
 pub async fn init_test(
     server_fs: &Arc<FakeFs>,
     cx: &mut TestAppContext,
@@ -1900,7 +1769,6 @@ fn build_project(ssh: Entity<RemoteClient>, cx: &mut TestAppContext) -> Entity<P
     });
 
     let node = NodeRuntime::unavailable();
-    let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
     let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let fs = FakeFs::new(cx.executor());
 
@@ -1909,5 +1777,5 @@ fn build_project(ssh: Entity<RemoteClient>, cx: &mut TestAppContext) -> Entity<P
         language::init(cx);
     });
 
-    cx.update(|cx| Project::remote(ssh, client, node, user_store, languages, fs, cx))
+    cx.update(|cx| Project::remote(ssh, client, node, languages, fs, cx))
 }

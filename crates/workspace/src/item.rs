@@ -9,7 +9,6 @@ use crate::{
 };
 use anyhow::Result;
 use client::{Client, proto};
-use futures::{StreamExt, channel::mpsc};
 use gpui::{
     Action, AnyElement, AnyView, App, AppContext, Context, Entity, EntityId, EventEmitter,
     FocusHandle, Focusable, Font, HighlightStyle, Pixels, Point, Render, SharedString, Task,
@@ -22,10 +21,8 @@ pub use settings::{
 use smallvec::SmallVec;
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
     ops::Range,
     path::Path,
-    rc::Rc,
     sync::Arc,
     time::Duration,
 };
@@ -680,45 +677,6 @@ impl<T: Item> ItemHandle for Entity<T> {
             .is_none()
         {
             let mut pending_autosave = DelayedDebouncedEditAction::new();
-            let (pending_update_tx, mut pending_update_rx) = mpsc::unbounded();
-            let pending_update = Rc::new(RefCell::new(None));
-
-            let mut send_follower_updates = None;
-            if let Some(item) = self.to_followable_item_handle(cx) {
-                let is_project_item = item.is_project_item(window, cx);
-                let item = item.downgrade();
-
-                send_follower_updates = Some(cx.spawn_in(window, {
-                    let pending_update = pending_update.clone();
-                    async move |workspace, cx| {
-                        while let Some(mut leader_id) = pending_update_rx.next().await {
-                            while let Ok(Some(id)) = pending_update_rx.try_next() {
-                                leader_id = id;
-                            }
-
-                            workspace.update_in(cx, |workspace, window, cx| {
-                                let Some(item) = item.upgrade() else { return };
-                                workspace.update_followers(
-                                    is_project_item,
-                                    proto::update_followers::Variant::UpdateView(
-                                        proto::UpdateView {
-                                            id: item
-                                                .remote_id(workspace.client(), window, cx)
-                                                .and_then(|id| id.to_proto()),
-                                            variant: pending_update.borrow_mut().take(),
-                                            leader_id,
-                                        },
-                                    ),
-                                    window,
-                                    cx,
-                                );
-                            })?;
-                            cx.background_executor().timer(LEADER_UPDATE_THROTTLE).await;
-                        }
-                        anyhow::Ok(())
-                    }
-                }));
-            }
 
             let mut event_subscription = Some(cx.subscribe_in(
                 self,
@@ -733,40 +691,6 @@ impl<T: Item> ItemHandle for Entity<T> {
                     } else {
                         return;
                     };
-
-                    if let Some(item) = item.to_followable_item_handle(cx) {
-                        let leader_id = workspace.leader_for_pane(&pane);
-
-                        if let Some(leader_id) = leader_id
-                            && let Some(FollowEvent::Unfollow) = item.to_follow_event(event)
-                        {
-                            workspace.unfollow(leader_id, window, cx);
-                        }
-
-                        if item.item_focus_handle(cx).contains_focused(window, cx) {
-                            match leader_id {
-                                Some(CollaboratorId::Agent) => {}
-                                Some(CollaboratorId::PeerId(leader_peer_id)) => {
-                                    item.add_event_to_update_proto(
-                                        event,
-                                        &mut pending_update.borrow_mut(),
-                                        window,
-                                        cx,
-                                    );
-                                    pending_update_tx.unbounded_send(Some(leader_peer_id)).ok();
-                                }
-                                None => {
-                                    item.add_event_to_update_proto(
-                                        event,
-                                        &mut pending_update.borrow_mut(),
-                                        window,
-                                        cx,
-                                    );
-                                    pending_update_tx.unbounded_send(None).ok();
-                                }
-                            }
-                        }
-                    }
 
                     if let Some(item) = item.to_serializable_item_handle(cx)
                         && item.should_serialize(event, cx)
@@ -868,7 +792,6 @@ impl<T: Item> ItemHandle for Entity<T> {
             cx.observe_release_in(self, window, move |workspace, _, _, _| {
                 workspace.panes_by_item.remove(&item_id);
                 event_subscription.take();
-                send_follower_updates.take();
             })
             .detach();
         }

@@ -48,7 +48,6 @@ fs.workspace = true
 git.workspace = true
 gpui.workspace = true
 indoc.workspace = true
-edit_prediction.workspace = true
 itertools.workspace = true
 language.workspace = true
 linkify.workspace = true

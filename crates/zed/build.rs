@@ -2,7 +2,8 @@
 use std::process::Command;
 
 fn main() {
-    if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    {
         println!("cargo:rustc-env=MACOSX_DEPLOYMENT_TARGET=10.15.7");
 
         // Weakly link ReplayKit to ensure Zed can be used on macOS 10.15+.

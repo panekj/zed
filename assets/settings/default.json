@@ -29,7 +29,7 @@
   // Features that can be globally enabled or disabled
   "features": {
     // Which edit prediction provider to use.
-    "edit_prediction_provider": "zed"
+    "edit_prediction_provider": "none"
   },
   // The name of a font to use for rendering text in the editor
   // ".ZedMono" currently aliases to Lilex
@@ -1156,9 +1156,9 @@
   // Control what info is collected by Zed.
   "telemetry": {
     // Send debug info like crash reports.
-    "diagnostics": true,
+    "diagnostics": false,
     // Send anonymized usage data like what languages you're using Zed with.
-    "metrics": true
+    "metrics": false
   },
   // Whether to disable all AI features in Zed.
   //

@@ -1,6 +1,5 @@
 use anyhow::Context as _;
 use collections::HashMap;
-use context_server::ContextServerCommand;
 use dap::adapters::DebugAdapterName;
 use fs::Fs;
 use futures::StreamExt as _;
@@ -55,9 +54,6 @@ pub struct ProjectSettings {
     /// Configuration for Debugger-related features
     pub dap: HashMap<DebugAdapterName, DapSettings>,
 
-    /// Settings for context servers used for AI-related features.
-    pub context_servers: HashMap<Arc<str>, ContextServerSettings>,
-
     /// Configuration for Diagnostics-related features.
     pub diagnostics: DiagnosticsSettings,
 
@@ -106,83 +102,13 @@ impl From<settings::NodeBinarySettings> for NodeBinarySettings {
 }
 
 /// Common language server settings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct GlobalLspSettings {
     /// Whether to show the LSP servers button in the status bar.
     ///
     /// Default: `true`
+    #[serde(default = "default_true")]
     pub button: bool,
-}
-
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug)]
-#[serde(tag = "source", rename_all = "snake_case")]
-pub enum ContextServerSettings {
-    Custom {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
-
-        #[serde(flatten)]
-        command: ContextServerCommand,
-    },
-    Extension {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
-        /// The settings for this context server specified by the extension.
-        ///
-        /// Consult the documentation for the context server to see what settings
-        /// are supported.
-        settings: serde_json::Value,
-    },
-}
-
-impl From<settings::ContextServerSettingsContent> for ContextServerSettings {
-    fn from(value: settings::ContextServerSettingsContent) -> Self {
-        match value {
-            settings::ContextServerSettingsContent::Custom { enabled, command } => {
-                ContextServerSettings::Custom { enabled, command }
-            }
-            settings::ContextServerSettingsContent::Extension { enabled, settings } => {
-                ContextServerSettings::Extension { enabled, settings }
-            }
-        }
-    }
-}
-impl Into<settings::ContextServerSettingsContent> for ContextServerSettings {
-    fn into(self) -> settings::ContextServerSettingsContent {
-        match self {
-            ContextServerSettings::Custom { enabled, command } => {
-                settings::ContextServerSettingsContent::Custom { enabled, command }
-            }
-            ContextServerSettings::Extension { enabled, settings } => {
-                settings::ContextServerSettingsContent::Extension { enabled, settings }
-            }
-        }
-    }
-}
-
-impl ContextServerSettings {
-    pub fn default_extension() -> Self {
-        Self::Extension {
-            enabled: true,
-            settings: serde_json::json!({}),
-        }
-    }
-
-    pub fn enabled(&self) -> bool {
-        match self {
-            ContextServerSettings::Custom { enabled, .. } => *enabled,
-            ContextServerSettings::Extension { enabled, .. } => *enabled,
-        }
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        match self {
-            ContextServerSettings::Custom { enabled: e, .. } => *e = enabled,
-            ContextServerSettings::Extension { enabled: e, .. } => *e = enabled,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -473,12 +399,6 @@ impl Settings for ProjectSettings {
             hunk_style: git.hunk_style.unwrap(),
         };
         Self {
-            context_servers: project
-                .context_servers
-                .clone()
-                .into_iter()
-                .map(|(key, value)| (key, value.into()))
-                .collect(),
             lsp: project
                 .lsp
                 .clone()

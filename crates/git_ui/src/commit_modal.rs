@@ -565,14 +565,6 @@ impl Render for CommitModal {
             .key_context("GitCommit")
             .on_action(cx.listener(Self::dismiss))
             .on_action(cx.listener(Self::commit))
-            .on_action(cx.listener(Self::amend))
-            .when(!DisableAiSettings::get_global(cx).disable_ai, |this| {
-                this.on_action(cx.listener(|this, _: &GenerateCommitMessage, _, cx| {
-                    this.git_panel.update(cx, |panel, cx| {
-                        panel.generate_commit_message(cx);
-                    })
-                }))
-            })
             .on_action(
                 cx.listener(|this, _: &zed_actions::git::Branch, window, cx| {
                     this.toggle_branch_selector(window, cx);

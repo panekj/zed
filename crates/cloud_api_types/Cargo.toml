@@ -15,7 +15,6 @@ path = "src/cloud_api_types.rs"
 anyhow.workspace = true
 chrono.workspace = true
 ciborium.workspace = true
-cloud_llm_client.workspace = true
 serde.workspace = true
 
 [dev-dependencies]

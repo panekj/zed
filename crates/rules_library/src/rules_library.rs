@@ -8,9 +8,6 @@ use gpui::{
     WindowOptions, actions, point, size, transparent_black,
 };
 use language::{Buffer, LanguageRegistry, language_settings::SoftWrap};
-use language_model::{
-    ConfiguredModel, LanguageModelRegistry, LanguageModelRequest, LanguageModelRequestMessage, Role,
-};
 use picker::{Picker, PickerDelegate};
 use release_channel::ReleaseChannel;
 use rope::Rope;

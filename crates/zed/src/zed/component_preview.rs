@@ -3,8 +3,6 @@
 //! A view for exploring Zed components.
 
 mod persistence;
-
-use client::UserStore;
 use collections::HashMap;
 use component::{ComponentId, ComponentMetadata, ComponentStatus, components};
 use gpui::{
@@ -18,10 +16,8 @@ use project::Project;
 use std::{iter::Iterator, ops::Range, sync::Arc};
 use ui::{ButtonLike, Divider, HighlightedLabel, ListItem, ListSubHeader, Tooltip, prelude::*};
 use ui_input::InputField;
-use workspace::{
-    AppState, Item, ItemId, SerializableItem, Workspace, WorkspaceId, delete_unloaded_items,
-    item::ItemEvent,
-};
+use workspace::{AppState, ItemId, SerializableItem, delete_unloaded_items};
+use workspace::{Item, Workspace, WorkspaceId, item::ItemEvent};
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     workspace::register_serializable_item::<ComponentPreview>(cx);
@@ -36,14 +32,12 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                 let app_state = app_state.clone();
 
                 let language_registry = app_state.languages.clone();
-                let user_store = app_state.user_store.clone();
 
                 let component_preview = cx.new(|cx| {
                     ComponentPreview::new(
                         weak_workspace.clone(),
                         project.clone(),
                         language_registry,
-                        user_store,
                         None,
                         None,
                         window,
@@ -93,6 +87,7 @@ enum PreviewPage {
 
 struct ComponentPreview {
     active_page: PreviewPage,
+    active_thread: Option<Entity<()>>,
     reset_key: usize,
     component_list: ListState,
     entries: Vec<PreviewEntry>,
@@ -105,7 +100,6 @@ struct ComponentPreview {
     language_registry: Arc<LanguageRegistry>,
     nav_scroll_handle: UniformListScrollHandle,
     project: Entity<Project>,
-    user_store: Entity<UserStore>,
     workspace: WeakEntity<Workspace>,
     workspace_id: Option<WorkspaceId>,
     _view_scroll_handle: ScrollHandle,
@@ -116,7 +110,6 @@ impl ComponentPreview {
         workspace: WeakEntity<Workspace>,
         project: Entity<Project>,
         language_registry: Arc<LanguageRegistry>,
-        user_store: Entity<UserStore>,
         selected_index: impl Into<Option<usize>>,
         active_page: Option<PreviewPage>,
         window: &mut Window,
@@ -148,10 +141,10 @@ impl ComponentPreview {
             language_registry,
             nav_scroll_handle: UniformListScrollHandle::new(),
             project,
-            user_store,
             workspace,
             workspace_id: None,
             _view_scroll_handle: ScrollHandle::new(),
+            active_thread: None,
         };
 
         if component_preview.cursor_index > 0 {
@@ -483,7 +476,14 @@ impl ComponentPreview {
                 ),
         );
 
-        if let Some(preview) = component.preview() {
+        // Check if the component's scope is Agent
+        if scope == ComponentScope::Agent {
+            if let Some(_) = self.active_thread.clone() {
+                if let Some(preview) = component.preview() {
+                    preview_container = preview_container.children(preview(window, cx));
+                }
+            }
+        } else if let Some(preview) = component.preview() {
             preview_container = preview_container.children(preview(window, cx));
         }
 
@@ -548,7 +548,6 @@ impl ComponentPreview {
             v_flex()
                 .id("render-component-page")
                 .flex_1()
-                .child(ComponentPreviewPage::new(component.clone(), self.reset_key))
                 .into_any_element()
         } else {
             v_flex()
@@ -558,6 +557,22 @@ impl ComponentPreview {
                 .child("Component not found")
                 .into_any_element()
         }
+    }
+
+    fn render_active_thread(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .id("render-active-thread")
+            .size_full()
+            .child(
+                div()
+                    .mx_auto()
+                    .w(px(640.))
+                    .h_full()
+                    .py_8()
+                    .bg(cx.theme().colors().panel_background)
+                    .child("No active thread"),
+            )
+            .into_any_element()
     }
 
     fn test_status_toast(&self, cx: &mut Context<Self>) {
@@ -729,7 +744,6 @@ impl Item for ComponentPreview {
         Self: Sized,
     {
         let language_registry = self.language_registry.clone();
-        let user_store = self.user_store.clone();
         let weak_workspace = self.workspace.clone();
         let project = self.project.clone();
         let selected_index = self.cursor_index;
@@ -739,7 +753,6 @@ impl Item for ComponentPreview {
             weak_workspace,
             project,
             language_registry,
-            user_store,
             selected_index,
             Some(active_page),
             window,
@@ -797,7 +810,6 @@ impl SerializableItem for ComponentPreview {
                 Err(_) => ActivePageId::default(),
             };
 
-        let user_store = project.read(cx).user_store();
         let language_registry = project.read(cx).languages().clone();
         let preview_page = if deserialized_active_page.0 == ActivePageId::default().0 {
             Some(PreviewPage::default())
@@ -815,7 +827,6 @@ impl SerializableItem for ComponentPreview {
         };
 
         window.spawn(cx, async move |cx| {
-            let user_store = user_store.clone();
             let language_registry = language_registry.clone();
             let weak_workspace = workspace.clone();
             let project = project.clone();
@@ -825,7 +836,6 @@ impl SerializableItem for ComponentPreview {
                         weak_workspace,
                         project,
                         language_registry,
-                        user_store,
                         None,
                         preview_page,
                         window,
@@ -886,6 +896,8 @@ impl ComponentPreviewPage {
     pub fn new(
         component: ComponentMetadata,
         reset_key: usize,
+        _: WeakEntity<Workspace>,
+        _: Option<Entity<()>>,
         // languages: Arc<LanguageRegistry>
     ) -> Self {
         Self {
@@ -964,17 +976,6 @@ impl ComponentPreviewPage {
     }
 
     fn render_preview(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let content = if let Some(preview) = self.component.preview() {
-            // Fall back to component preview
-            preview(window, cx).unwrap_or_else(|| {
-                div()
-                    .child("Failed to load preview. This path should be unreachable")
-                    .into_any_element()
-            })
-        } else {
-            div().child("No preview available").into_any_element()
-        };
-
         v_flex()
             .id(("component-preview", self.reset_key))
             .size_full()
@@ -982,7 +983,16 @@ impl ComponentPreviewPage {
             .px_12()
             .py_6()
             .bg(cx.theme().colors().editor_background)
-            .child(content)
+            .child(if let Some(preview) = self.component.preview() {
+                // Fall back to component preview
+                preview(window, cx).unwrap_or_else(|| {
+                    div()
+                        .child("Failed to load preview. This path should be unreachable")
+                        .into_any_element()
+                })
+            } else {
+                div().child("No preview available").into_any_element()
+            })
     }
 }
 

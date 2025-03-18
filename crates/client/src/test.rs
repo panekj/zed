@@ -1,7 +1,6 @@
-use crate::{Client, Connection, Credentials, EstablishConnectionError, UserStore};
+use crate::{Client, Connection, Credentials, EstablishConnectionError};
 use anyhow::{Context as _, Result, anyhow};
 use cloud_api_client::{AuthenticatedUser, GetAuthenticatedUserResponse, PlanInfo};
-use cloud_llm_client::{CurrentUsage, PlanV1, UsageData, UsageLimit};
 use futures::{StreamExt, stream::BoxStream};
 use gpui::{AppContext as _, BackgroundExecutor, Entity, TestAppContext};
 use http_client::{AsyncBody, Method, Request, http};
@@ -213,23 +212,6 @@ impl FakeServer {
     fn connection_id(&self) -> ConnectionId {
         self.state.lock().connection_id.expect("not connected")
     }
-
-    pub async fn build_user_store(
-        &self,
-        client: Arc<Client>,
-        cx: &mut TestAppContext,
-    ) -> Entity<UserStore> {
-        let user_store = cx.new(|cx| UserStore::new(client, cx));
-        assert_eq!(
-            self.receive::<proto::GetUsers>()
-                .await
-                .unwrap()
-                .payload
-                .user_ids,
-            &[self.user_id]
-        );
-        user_store
-    }
 }
 
 impl Drop for FakeServer {
@@ -269,19 +251,7 @@ pub fn make_get_authenticated_user_response(
         },
         feature_flags: vec![],
         plan: PlanInfo {
-            plan: PlanV1::ZedPro,
-            plan_v2: None,
             subscription_period: None,
-            usage: CurrentUsage {
-                model_requests: UsageData {
-                    used: 0,
-                    limit: UsageLimit::Limited(500),
-                },
-                edit_predictions: UsageData {
-                    used: 250,
-                    limit: UsageLimit::Unlimited,
-                },
-            },
             trial_started_at: None,
             is_usage_based_billing_enabled: false,
             is_account_too_young: false,

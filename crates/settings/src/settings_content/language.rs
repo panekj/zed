@@ -73,22 +73,14 @@ pub struct FeaturesContent {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum EditPredictionProvider {
-    None,
     #[default]
-    Copilot,
-    Supermaven,
-    Zed,
-    Codestral,
+    None,
 }
 
 impl EditPredictionProvider {
     pub fn is_zed(&self) -> bool {
         match self {
-            EditPredictionProvider::Zed => true,
-            EditPredictionProvider::None
-            | EditPredictionProvider::Copilot
-            | EditPredictionProvider::Supermaven
-            | EditPredictionProvider::Codestral => false,
+            _ => false,
         }
     }
 }

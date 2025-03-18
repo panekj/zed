@@ -1,7 +1,6 @@
 mod preview;
 mod repl_menu;
 
-use agent_settings::AgentSettings;
 use editor::actions::{
     AddSelectionAbove, AddSelectionBelow, CodeActionSource, DuplicateLineDown, GoToDiagnostic,
     GoToHunk, GoToPreviousDiagnostic, GoToPreviousHunk, MoveLineDown, MoveLineUp, SelectAll,
@@ -48,23 +47,9 @@ impl QuickActionBar {
         workspace: &Workspace,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut was_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
-        let mut was_agent_button = AgentSettings::get_global(cx).button;
-
-        let ai_settings_subscription = cx.observe_global::<SettingsStore>(move |_, cx| {
-            let agent_settings = AgentSettings::get_global(cx);
-            let is_agent_enabled = agent_settings.enabled(cx);
-
-            if was_agent_enabled != is_agent_enabled || was_agent_button != agent_settings.button {
-                was_agent_enabled = is_agent_enabled;
-                was_agent_button = agent_settings.button;
-                cx.notify();
-            }
-        });
-
         let mut this = Self {
             _inlay_hints_enabled_subscription: None,
-            _ai_settings_subscription: ai_settings_subscription,
+            _ai_settings_subscription: Subscription::new(|| {}),
             active_item: None,
             buffer_search_bar,
             show: true,
@@ -122,7 +107,7 @@ impl Render for QuickActionBar {
         let show_git_blame_gutter = editor_value.show_git_blame_gutter();
         let auto_signature_help_enabled = editor_value.auto_signature_help_enabled(cx);
         let show_line_numbers = editor_value.line_numbers_enabled(cx);
-        let has_edit_prediction_provider = editor_value.edit_prediction_provider().is_some();
+        let has_edit_prediction_provider = false;
         let show_edit_predictions = editor_value.edit_predictions_enabled();
         let edit_predictions_enabled_at_cursor =
             editor_value.edit_predictions_enabled_at_cursor(cx);
@@ -617,10 +602,6 @@ impl Render for QuickActionBar {
             .children(self.render_repl_menu(cx))
             .children(self.render_preview_button(self.workspace.clone(), cx))
             .children(search_button)
-            .when(
-                AgentSettings::get_global(cx).enabled(cx) && AgentSettings::get_global(cx).button,
-                |bar| bar.child(assistant_button),
-            )
             .children(code_actions_dropdown)
             .children(editor_selections_dropdown)
             .child(editor_settings_dropdown)

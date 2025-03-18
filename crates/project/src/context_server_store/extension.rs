@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use context_server::ContextServerCommand;
 use extension::{
     ContextServerConfiguration, Extension, ExtensionContextServerProxy, ExtensionHostProxy,
     ProjectDelegate,

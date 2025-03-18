@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use cloud_llm_client::WebSearchResponse;
 use collections::HashMap;
 use gpui::{App, AppContext as _, Context, Entity, Global, SharedString, Task};
 
@@ -15,7 +14,7 @@ pub struct WebSearchProviderId(pub SharedString);
 
 pub trait WebSearchProvider {
     fn id(&self) -> WebSearchProviderId;
-    fn search(&self, query: String, cx: &mut App) -> Task<Result<WebSearchResponse>>;
+    fn search(&self, query: String, cx: &mut App) -> Task<Result<()>>;
 }
 
 struct GlobalWebSearchRegistry(Entity<WebSearchRegistry>);

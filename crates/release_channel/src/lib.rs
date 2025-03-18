@@ -8,11 +8,13 @@ use gpui::{App, Global, SemanticVersion};
 
 /// stable | dev | nightly | preview
 pub static RELEASE_CHANNEL_NAME: LazyLock<String> = LazyLock::new(|| {
+    if let Some(release_channel) = option_env!("ZED_RELEASE_CHANNEL") {
+        return release_channel.to_string();
+    }
     if cfg!(debug_assertions) {
-        env::var("ZED_RELEASE_CHANNEL")
-            .unwrap_or_else(|_| include_str!("../../zed/RELEASE_CHANNEL").trim().to_string())
+        "dev".to_string()
     } else {
-        include_str!("../../zed/RELEASE_CHANNEL").trim().to_string()
+        "stable".to_string()
     }
 });
 

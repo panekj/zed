@@ -481,19 +481,19 @@ impl Telemetry {
     }
 
     pub fn metrics_id(self: &Arc<Self>) -> Option<Arc<str>> {
-        self.state.lock().metrics_id.clone()
+        None
     }
 
     pub fn system_id(self: &Arc<Self>) -> Option<Arc<str>> {
-        self.state.lock().system_id.clone()
+        None
     }
 
     pub fn installation_id(self: &Arc<Self>) -> Option<Arc<str>> {
-        self.state.lock().installation_id.clone()
+        None
     }
 
     pub fn is_staff(self: &Arc<Self>) -> Option<bool> {
-        self.state.lock().is_staff
+        None
     }
 
     fn build_request(

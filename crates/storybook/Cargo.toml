@@ -14,13 +14,8 @@ path = "src/storybook.rs"
 
 [dependencies]
 anyhow.workspace = true
-clap = { workspace = true, features = ["derive", "string"] }
-collab_ui = { workspace = true, features = ["stories"] }
-ctrlc = "3.4"
-dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
 editor.workspace = true
 fuzzy.workspace = true
-gpui = { workspace = true, default-features = true }
 indoc.workspace = true
 language.workspace = true
 log.workspace = true
@@ -32,11 +27,15 @@ rust-embed.workspace = true
 settings.workspace = true
 simplelog.workspace = true
 story.workspace = true
-strum = { workspace = true, features = ["derive"] }
 theme.workspace = true
+workspace.workspace = true
+clap = { workspace = true, features = ["derive", "string"] }
+ctrlc = "3.4"
+dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
+gpui = { workspace = true, default-features = true }
+strum = { workspace = true, features = ["derive"] }
 title_bar = { workspace = true, features = ["stories"] }
 ui = { workspace = true, features = ["stories"] }
-workspace.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

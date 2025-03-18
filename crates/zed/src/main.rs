@@ -1,12 +1,10 @@
 mod reliability;
 mod zed;
 
-use agent_ui::AgentPanel;
 use anyhow::{Context as _, Error, Result};
 use clap::{Parser, command};
 use cli::FORCE_CLI_MODE_ENV_VAR_NAME;
-use client::{Client, ProxySettings, UserStore, parse_zed_link};
-use collab_ui::channel_view::ChannelView;
+use client::{Client, ProxySettings, parse_zed_link};
 use collections::HashMap;
 use crashes::InitCrashHandler;
 use db::kvp::{GLOBAL_KEY_VALUE_STORE, KEY_VALUE_STORE};
@@ -15,12 +13,11 @@ use extension::ExtensionHostProxy;
 use fs::{Fs, RealFs};
 use futures::{StreamExt, channel::oneshot, future};
 use git::GitHostingProviderRegistry;
-use gpui::{App, AppContext, Application, AsyncApp, Focusable as _, UpdateGlobal as _};
+use gpui::{App, AppContext, Application, AsyncApp, UpdateGlobal as _};
 
 use gpui_tokio::Tokio;
 use language::LanguageRegistry;
 use onboarding::{FIRST_OPEN, show_onboarding_view};
-use prompt_store::PromptBuilder;
 use remote::RemoteConnectionOptions;
 use reqwest_client::ReqwestClient;
 
@@ -463,7 +460,6 @@ pub fn main() {
         debug_adapter_extension::init(extension_host_proxy.clone(), cx);
         language::init(cx);
         languages::init(languages.clone(), fs.clone(), node_runtime.clone(), cx);
-        let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
         let workspace_store = cx.new(|cx| WorkspaceStore::new(client.clone(), cx));
 
         language_extension::init(
@@ -522,7 +518,6 @@ pub fn main() {
         let app_state = Arc::new(AppState {
             languages,
             client: client.clone(),
-            user_store,
             fs: fs.clone(),
             build_window_options,
             workspace_store,
@@ -533,7 +528,6 @@ pub fn main() {
 
         auto_update::init(client.http_client(), cx);
         dap_adapters::init(cx);
-        auto_update_ui::init(cx);
         reliability::init(
             client.http_client(),
             system_id.as_ref().map(|id| id.to_string()),
@@ -555,33 +549,9 @@ pub fn main() {
             cx.background_executor().clone(),
         );
         command_palette::init(cx);
-        let copilot_language_server_id = app_state.languages.next_language_server_id();
-        copilot::init(
-            copilot_language_server_id,
-            app_state.fs.clone(),
-            app_state.client.http_client(),
-            app_state.node_runtime.clone(),
-            cx,
-        );
-        supermaven::init(app_state.client.clone(), cx);
-        language_model::init(app_state.client.clone(), cx);
-        language_models::init(app_state.user_store.clone(), app_state.client.clone(), cx);
-        agent_settings::init(cx);
-        acp_tools::init(cx);
-        zeta2_tools::init(cx);
         web_search::init(cx);
-        web_search_providers::init(app_state.client.clone(), cx);
         snippet_provider::init(cx);
-        edit_prediction_registry::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        let prompt_builder = PromptBuilder::load(app_state.fs.clone(), stdout_is_a_pty(), cx);
-        agent_ui::init(
-            app_state.fs.clone(),
-            app_state.client.clone(),
-            prompt_builder.clone(),
-            app_state.languages.clone(),
-            false,
-            cx,
-        );
+
         repl::init(app_state.fs.clone(), cx);
         recent_projects::init(cx);
 
@@ -592,7 +562,6 @@ pub fn main() {
         repl::notebook::init(cx);
         diagnostics::init(cx);
 
-        audio::init(cx);
         workspace::init(app_state.clone(), cx);
         ui_prompt::init(cx);
 
@@ -605,7 +574,6 @@ pub fn main() {
         outline_panel::init(cx);
         tasks_ui::init(cx);
         snippets_ui::init(cx);
-        channel::init(&app_state.client.clone(), app_state.user_store.clone(), cx);
         search::init(cx);
         vim::init(cx);
         terminal_view::init(cx);
@@ -616,18 +584,15 @@ pub fn main() {
         theme_selector::init(cx);
         settings_profile_selector::init(cx);
         language_tools::init(cx);
-        call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        collab_ui::init(&app_state, cx);
+        notifications::init(app_state.client.clone(), cx);
+        title_bar::init(cx);
         git_ui::init(cx);
-        feedback::init(cx);
         markdown_preview::init(cx);
         svg_preview::init(cx);
         onboarding::init(cx);
         settings_ui::init(cx);
         keymap_editor::init(cx);
         extensions_ui::init(cx);
-        zeta::init(cx);
         inspector_ui::init(app_state.clone(), cx);
         json_schema_store::init(cx);
 
@@ -681,7 +646,7 @@ pub fn main() {
 
         let menus = app_menus(cx);
         cx.set_menus(menus);
-        initialize_workspace(app_state.clone(), prompt_builder, cx);
+        initialize_workspace(app_state.clone(), cx);
 
         cx.activate(true);
 
@@ -779,18 +744,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
                 })
                 .detach_and_log_err(cx);
             }
-            OpenRequestKind::AgentPanel => {
-                cx.spawn(async move |cx| {
-                    let workspace =
-                        workspace::get_any_active_workspace(app_state, cx.clone()).await?;
-                    workspace.update(cx, |workspace, window, cx| {
-                        if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
-                            panel.focus_handle(cx).focus(window);
-                        }
-                    })
-                })
-                .detach_and_log_err(cx);
-            }
+            OpenRequestKind::AgentPanel => {}
             OpenRequestKind::DockMenuAction { index } => {
                 cx.perform_dock_menu_action(index);
             }
@@ -917,36 +871,10 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
                 // show a visible error message.
                 authenticate(client, cx).await.log_err();
 
-                if let Some(channel_id) = request.join_channel {
-                    cx.update(|cx| {
-                        workspace::join_channel(
-                            client::ChannelId(channel_id),
-                            app_state.clone(),
-                            None,
-                            cx,
-                        )
-                    })?
-                    .await?;
-                }
-
                 let workspace_window =
                     workspace::get_any_active_workspace(app_state, cx.clone()).await?;
-                let workspace = workspace_window.entity(cx)?;
+                let _workspace = workspace_window.entity(cx)?;
 
-                let mut promises = Vec::new();
-                for (channel_id, heading) in request.open_channel_notes {
-                    promises.push(cx.update_window(workspace_window.into(), |_, window, cx| {
-                        ChannelView::open(
-                            client::ChannelId(channel_id),
-                            heading,
-                            workspace.clone(),
-                            window,
-                            cx,
-                        )
-                        .log_err()
-                    })?)
-                }
-                future::join_all(promises).await;
                 anyhow::Ok(())
             })
             .await;

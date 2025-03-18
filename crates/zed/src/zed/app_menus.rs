@@ -1,4 +1,3 @@
-use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
@@ -41,7 +40,6 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::separator(),
         MenuItem::action("Project Panel", project_panel::ToggleFocus),
         MenuItem::action("Outline Panel", outline_panel::ToggleFocus),
-        MenuItem::action("Collab Panel", collab_panel::ToggleFocus),
         MenuItem::action("Terminal Panel", terminal_panel::ToggleFocus),
         MenuItem::action("Debugger Panel", ToggleDebugPanel),
         MenuItem::separator(),
@@ -289,35 +287,14 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         Menu {
             name: "Help".into(),
             items: vec![
-                MenuItem::action(
-                    "View Release Notes Locally",
-                    auto_update_ui::ViewReleaseNotesLocally,
-                ),
                 MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
                 MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
-                MenuItem::action("Show Welcome", onboarding::ShowWelcome),
-                MenuItem::separator(),
-                MenuItem::action("File Bug Report...", zed_actions::feedback::FileBugReport),
-                MenuItem::action("Request Feature...", zed_actions::feedback::RequestFeature),
-                MenuItem::action("Email Us...", zed_actions::feedback::EmailZed),
+                // MenuItem::action("Show Welcome", workspace::Welcome),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",
                     super::OpenBrowser {
                         url: "https://zed.dev/docs".into(),
-                    },
-                ),
-                MenuItem::action("Zed Repository", feedback::OpenZedRepo),
-                MenuItem::action(
-                    "Zed Twitter",
-                    super::OpenBrowser {
-                        url: "https://twitter.com/zeddotdev".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Join the Team",
-                    super::OpenBrowser {
-                        url: "https://zed.dev/jobs".into(),
                     },
                 ),
             ],

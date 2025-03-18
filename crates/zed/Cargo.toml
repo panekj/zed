@@ -19,30 +19,20 @@ name = "zed"
 path = "src/main.rs"
 
 [dependencies]
-acp_tools.workspace = true
 activity_indicator.workspace = true
-agent_settings.workspace = true
-agent_ui.workspace = true
 anyhow.workspace = true
 askpass.workspace = true
 assets.workspace = true
-audio.workspace = true
 auto_update.workspace = true
-auto_update_ui.workspace = true
 backtrace = "0.3"
 bincode.workspace = true
 breadcrumbs.workspace = true
-call.workspace = true
-channel.workspace = true
 clap.workspace = true
 cli.workspace = true
 client.workspace = true
-codestral.workspace = true
-collab_ui.workspace = true
 collections.workspace = true
 command_palette.workspace = true
 component.workspace = true
-copilot.workspace = true
 crashes.workspace = true
 dap_adapters.workspace = true
 db.workspace = true
@@ -51,13 +41,11 @@ debugger_tools.workspace = true
 debugger_ui.workspace = true
 diagnostics.workspace = true
 editor.workspace = true
-zeta2_tools.workspace = true
 env_logger.workspace = true
 extension.workspace = true
 extension_host.workspace = true
 extensions_ui.workspace = true
 feature_flags.workspace = true
-feedback.workspace = true
 file_finder.workspace = true
 fs.workspace = true
 futures.workspace = true
@@ -74,7 +62,6 @@ gpui = { workspace = true, features = [
 ] }
 gpui_tokio.workspace = true
 
-edit_prediction_button.workspace = true
 http_client.workspace = true
 image_viewer.workspace = true
 inspector_ui.workspace = true
@@ -84,8 +71,6 @@ json_schema_store.workspace = true
 keymap_editor.workspace = true
 language.workspace = true
 language_extension.workspace = true
-language_model.workspace = true
-language_models.workspace = true
 language_onboarding.workspace = true
 language_selector.workspace = true
 language_tools.workspace = true
@@ -111,7 +96,6 @@ profiling.workspace = true
 project.workspace = true
 project_panel.workspace = true
 project_symbols.workspace = true
-prompt_store.workspace = true
 proto.workspace = true
 recent_projects.workspace = true
 release_channel.workspace = true
@@ -131,7 +115,6 @@ shellexpand.workspace = true
 smol.workspace = true
 snippet_provider.workspace = true
 snippets_ui.workspace = true
-supermaven.workspace = true
 svg_preview.workspace = true
 sysinfo.workspace = true
 tab_switcher.workspace = true
@@ -157,12 +140,10 @@ vim.workspace = true
 vim_mode_setting.workspace = true
 watch.workspace = true
 web_search.workspace = true
-web_search_providers.workspace = true
 workspace.workspace = true
 zed_actions.workspace = true
 zed_env_vars.workspace = true
-zeta.workspace = true
-zeta2.workspace = true
+
 zlog.workspace = true
 zlog_settings.workspace = true
 
@@ -176,7 +157,6 @@ winresource = "0.1"
 ashpd.workspace = true
 
 [dev-dependencies]
-call = { workspace = true, features = ["test-support"] }
 dap = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
