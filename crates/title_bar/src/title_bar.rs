@@ -1,5 +1,4 @@
 mod application_menu;
-mod collab;
 mod platforms;
 mod window_controls;
 
@@ -14,8 +13,6 @@ use crate::application_menu::{
 };
 
 use crate::platforms::{platform_linux, platform_mac, platform_windows};
-use auto_update::AutoUpdateStatus;
-use call::ActiveCall;
 use client::{Client, UserStore};
 use feature_flags::{FeatureFlagAppExt, ZedPro};
 use git_ui::onboarding::GitBanner;
@@ -266,7 +263,6 @@ impl TitleBar {
         let project = workspace.project().clone();
         let user_store = workspace.app_state().user_store.clone();
         let client = workspace.app_state().client.clone();
-        let active_call = ActiveCall::global(cx);
 
         let platform_style = PlatformStyle::platform();
         let application_menu = match platform_style {
@@ -289,7 +285,6 @@ impl TitleBar {
             }),
         );
         subscriptions.push(cx.subscribe(&project, |_, _, _, cx| cx.notify()));
-        subscriptions.push(cx.observe(&active_call, |this, _, cx| this.active_call_changed(cx)));
         subscriptions.push(cx.observe_window_activation(window, Self::window_activation_changed));
         subscriptions.push(cx.observe(&user_store, |_, _, cx| cx.notify()));
 
@@ -527,15 +522,6 @@ impl TitleBar {
     }
 
     fn window_activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if window.is_window_active() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(Some(&self.project), cx))
-                .detach_and_log_err(cx);
-        } else if cx.active_window().is_none() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(None, cx))
-                .detach_and_log_err(cx);
-        }
         self.workspace
             .update(cx, |workspace, cx| {
                 workspace.update_active_view_for_followers(window, cx);
@@ -543,30 +529,10 @@ impl TitleBar {
             .ok();
     }
 
-    fn active_call_changed(&mut self, cx: &mut Context<Self>) {
-        cx.notify();
-    }
-
-    fn share_project(&mut self, _: &ShareProject, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.share_project(project, cx))
-            .detach_and_log_err(cx);
-    }
-
-    fn unshare_project(&mut self, _: &UnshareProject, _: &mut Window, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.unshare_project(project, cx))
-            .log_err();
-    }
-
     fn render_connection_status(
         &self,
         status: &client::Status,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match status {
             client::Status::ConnectionError
@@ -580,33 +546,12 @@ impl TitleBar {
                     .tooltip(Tooltip::text("Disconnected"))
                     .into_any_element(),
             ),
-            client::Status::UpgradeRequired => {
-                let auto_updater = auto_update::AutoUpdater::get(cx);
-                let label = match auto_updater.map(|auto_update| auto_update.read(cx).status()) {
-                    Some(AutoUpdateStatus::Updated { .. }) => "Please restart Zed to Collaborate",
-                    Some(AutoUpdateStatus::Installing)
-                    | Some(AutoUpdateStatus::Downloading)
-                    | Some(AutoUpdateStatus::Checking) => "Updating...",
-                    Some(AutoUpdateStatus::Idle) | Some(AutoUpdateStatus::Errored) | None => {
-                        "Please update Zed to Collaborate"
-                    }
-                };
-
-                Some(
-                    Button::new("connection-status", label)
-                        .label_size(LabelSize::Small)
-                        .on_click(|_, window, cx| {
-                            if let Some(auto_updater) = auto_update::AutoUpdater::get(cx) {
-                                if auto_updater.read(cx).status().is_updated() {
-                                    workspace::reload(&Default::default(), cx);
-                                    return;
-                                }
-                            }
-                            auto_update::check(&Default::default(), window, cx);
-                        })
-                        .into_any_element(),
-                )
-            }
+            client::Status::UpgradeRequired => Some(
+                Button::new("connection-status", "No updates")
+                    .label_size(LabelSize::Small)
+                    .on_click(|_, _window, _cx| return)
+                    .into_any_element(),
+            ),
             _ => None,
         }
     }

@@ -6,7 +6,6 @@ pub mod pane;
 pub mod pane_group;
 mod persistence;
 pub mod searchable;
-pub mod shared_screen;
 mod status_bar;
 pub mod tasks;
 mod theme_preview;
@@ -17,10 +16,9 @@ mod workspace_settings;
 pub use toast_layer::{RunAction, ToastAction, ToastLayer, ToastView};
 
 use anyhow::{anyhow, Context as _, Result};
-use call::{call_settings::CallSettings, ActiveCall};
 use client::{
-    proto::{self, ErrorCode, PanelId, PeerId},
-    ChannelId, Client, ErrorExt, Status, TypedEnvelope, UserStore,
+    proto::{self, PanelId, PeerId},
+    ChannelId, Client, ErrorExt, UserStore,
 };
 use collections::{hash_map, HashMap, HashSet};
 use derive_more::{Deref, DerefMut};
@@ -72,7 +70,6 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use session::AppSession;
 use settings::Settings;
-use shared_screen::SharedScreen;
 use sqlez::{
     bindable::{Bind, Column, StaticColumnCount},
     statement::Statement,
@@ -844,7 +841,6 @@ pub struct Workspace {
     last_leaders_by_pane: HashMap<WeakEntity<Pane>, PeerId>,
     window_edited: bool,
     dirty_items: HashMap<EntityId, Subscription>,
-    active_call: Option<(Entity<ActiveCall>, Vec<Subscription>)>,
     leader_updates_tx: mpsc::UnboundedSender<(PeerId, proto::UpdateFollowers)>,
     database_id: Option<WorkspaceId>,
     app_state: Arc<AppState>,
@@ -1055,13 +1051,6 @@ impl Workspace {
 
         let session_id = app_state.session.read(cx).id().to_owned();
 
-        let mut active_call = None;
-        if let Some(call) = ActiveCall::try_global(cx) {
-            let call = call.clone();
-            let subscriptions = vec![cx.subscribe_in(&call, window, Self::on_active_call_event)];
-            active_call = Some((call, subscriptions));
-        }
-
         let (serializable_items_tx, serializable_items_rx) =
             mpsc::unbounded::<Box<dyn SerializableItemHandle>>();
         let _items_serializer = cx.spawn_in(window, async move |this, cx| {
@@ -1143,7 +1132,6 @@ impl Workspace {
             dispatching_keystrokes: Default::default(),
             window_edited: false,
             dirty_items: Default::default(),
-            active_call,
             database_id: workspace_id,
             app_state,
             _observe_current_user,
@@ -1880,8 +1868,6 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<bool>> {
-        let active_call = self.active_call().cloned();
-
         // On Linux and Windows, closing the last window should restore the last workspace.
         let save_last_workspace = cfg!(not(target_os = "macos"))
             && close_intent != CloseIntent::ReplaceWindow
@@ -1894,32 +1880,6 @@ impl Workspace {
                     .filter(|window| window.downcast::<Workspace>().is_some())
                     .count()
             })?;
-
-            if let Some(active_call) = active_call {
-                if close_intent != CloseIntent::Quit
-                    && workspace_count == 1
-                    && active_call.read_with(cx, |call, _| call.room().is_some())?
-                {
-                    let answer = cx.update(|window, cx| {
-                        window.prompt(
-                            PromptLevel::Warning,
-                            "Do you want to leave the current call?",
-                            None,
-                            &["Close window and hang up", "Cancel"],
-                            cx,
-                        )
-                    })?;
-
-                    if answer.await.log_err() == Some(1) {
-                        return anyhow::Ok(false);
-                    } else {
-                        active_call
-                            .update(cx, |call, cx| call.hang_up(cx))?
-                            .await
-                            .log_err();
-                    }
-                }
-            }
 
             let save_result = this
                 .update_in(cx, |this, window, cx| {
@@ -3062,21 +3022,6 @@ impl Workspace {
         item
     }
 
-    pub fn open_shared_screen(
-        &mut self,
-        peer_id: PeerId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(shared_screen) =
-            self.shared_screen_for_peer(peer_id, &self.active_pane, window, cx)
-        {
-            self.active_pane.update(cx, |pane, cx| {
-                pane.add_item(Box::new(shared_screen), false, true, None, window, cx)
-            });
-        }
-    }
-
     pub fn activate_item(
         &mut self,
         item: &dyn ItemHandle,
@@ -3686,52 +3631,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Task<Result<()>>> {
-        let pane = self.active_pane().clone();
-
-        self.last_leaders_by_pane
-            .insert(pane.downgrade(), leader_id);
-        self.unfollow(leader_id, window, cx);
-        self.unfollow_in_pane(&pane, window, cx);
-        self.follower_states.insert(
-            leader_id,
-            FollowerState {
-                center_pane: pane.clone(),
-                dock_pane: None,
-                active_view_id: None,
-                items_by_leader_view_id: Default::default(),
-            },
-        );
-        cx.notify();
-
-        let room_id = self.active_call()?.read(cx).room()?.read(cx).id();
-        let project_id = self.project.read(cx).remote_id();
-        let request = self.app_state.client.request(proto::Follow {
-            room_id,
-            project_id,
-            leader_id: Some(leader_id),
-        });
-
-        Some(cx.spawn_in(window, async move |this, cx| {
-            let response = request.await?;
-            this.update(cx, |this, _| {
-                let state = this
-                    .follower_states
-                    .get_mut(&leader_id)
-                    .ok_or_else(|| anyhow!("following interrupted"))?;
-                state.active_view_id = response
-                    .active_view
-                    .as_ref()
-                    .and_then(|view| ViewId::from_proto(view.id.clone()?).ok());
-                Ok::<_, anyhow::Error>(())
-            })??;
-            if let Some(view) = response.active_view {
-                Self::add_view_from_leader(this.clone(), leader_id, &view, cx).await?;
-            }
-            this.update_in(cx, |this, window, cx| {
-                this.leader_updated(leader_id, window, cx)
-            })?;
-            Ok(())
-        }))
+        None
     }
 
     pub fn follow_next_collaborator(
@@ -3740,111 +3640,25 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let collaborators = self.project.read(cx).collaborators();
-        let next_leader_id = if let Some(leader_id) = self.leader_for_pane(&self.active_pane) {
-            let mut collaborators = collaborators.keys().copied();
-            for peer_id in collaborators.by_ref() {
-                if peer_id == leader_id {
-                    break;
-                }
-            }
-            collaborators.next()
-        } else if let Some(last_leader_id) =
-            self.last_leaders_by_pane.get(&self.active_pane.downgrade())
-        {
-            if collaborators.contains_key(last_leader_id) {
-                Some(*last_leader_id)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let pane = self.active_pane.clone();
-        let Some(leader_id) = next_leader_id.or_else(|| collaborators.keys().copied().next())
-        else {
-            return;
-        };
-        if self.unfollow_in_pane(&pane, window, cx) == Some(leader_id) {
-            return;
-        }
-        if let Some(task) = self.start_following(leader_id, window, cx) {
-            task.detach_and_log_err(cx)
-        }
     }
 
-    pub fn follow(&mut self, leader_id: PeerId, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(room) = ActiveCall::global(cx).read(cx).room() else {
-            return;
-        };
-        let room = room.read(cx);
-        let Some(remote_participant) = room.remote_participant_for_peer_id(leader_id) else {
-            return;
-        };
-
-        let project = self.project.read(cx);
-
-        let other_project_id = match remote_participant.location {
-            call::ParticipantLocation::External => None,
-            call::ParticipantLocation::UnsharedProject => None,
-            call::ParticipantLocation::SharedProject { project_id } => {
-                if Some(project_id) == project.remote_id() {
-                    None
-                } else {
-                    Some(project_id)
-                }
-            }
-        };
-
-        // if they are active in another project, follow there.
-        if let Some(project_id) = other_project_id {
-            let app_state = self.app_state.clone();
-            crate::join_in_room_project(project_id, remote_participant.user.id, app_state, cx)
-                .detach_and_log_err(cx);
-        }
-
-        // if you're already following, find the right pane and focus it.
-        if let Some(follower_state) = self.follower_states.get(&leader_id) {
-            window.focus(&follower_state.pane().focus_handle(cx));
-
-            return;
-        }
-
-        // Otherwise, follow.
-        if let Some(task) = self.start_following(leader_id, window, cx) {
-            task.detach_and_log_err(cx)
-        }
+    pub fn follow(&mut self, _leader_id: PeerId, _window: &mut Window, _cx: &mut Context<Self>) {
+        return;
     }
 
     pub fn unfollow(
         &mut self,
-        leader_id: PeerId,
-        window: &mut Window,
+        _leader_id: PeerId,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<()> {
         cx.notify();
-        let state = self.follower_states.remove(&leader_id)?;
-        for (_, item) in state.items_by_leader_view_id {
-            item.view.set_leader_peer_id(None, window, cx);
-        }
-
-        let project_id = self.project.read(cx).remote_id();
-        let room_id = self.active_call()?.read(cx).room()?.read(cx).id();
-        self.app_state
-            .client
-            .send(proto::Unfollow {
-                room_id,
-                project_id,
-                leader_id: Some(leader_id),
-            })
-            .log_err();
 
         Some(())
     }
 
     pub fn is_being_followed(&self, peer_id: PeerId) -> bool {
-        self.follower_states.contains_key(&peer_id)
+        false
     }
 
     fn active_item_path_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4246,12 +4060,6 @@ impl Workspace {
         let active_view_id = update.view.as_ref().and_then(|view| view.id.as_ref());
         if active_view_id != self.last_active_view_id.as_ref() {
             self.last_active_view_id = active_view_id.cloned();
-            self.update_followers(
-                is_project_item,
-                proto::update_followers::Variant::UpdateActiveView(update),
-                window,
-                cx,
-            );
         }
     }
 
@@ -4282,27 +4090,6 @@ impl Workspace {
         (active_item, panel_id)
     }
 
-    fn update_followers(
-        &self,
-        project_only: bool,
-        update: proto::update_followers::Variant,
-        _: &mut Window,
-        cx: &mut App,
-    ) -> Option<()> {
-        // If this update only applies to for followers in the current project,
-        // then skip it unless this project is shared. If it applies to all
-        // followers, regardless of project, then set `project_id` to none,
-        // indicating that it goes to all followers.
-        let project_id = if project_only {
-            Some(self.project.read(cx).remote_id()?)
-        } else {
-            None
-        };
-        self.app_state().workspace_store.update(cx, |store, cx| {
-            store.update_followers(project_id, update, cx)
-        })
-    }
-
     pub fn leader_for_pane(&self, pane: &Entity<Pane>) -> Option<PeerId> {
         self.follower_states.iter().find_map(|(leader_id, state)| {
             if state.center_pane == *pane || state.dock_pane.as_ref() == Some(pane) {
@@ -4315,77 +4102,11 @@ impl Workspace {
 
     fn leader_updated(
         &mut self,
-        leader_id: PeerId,
-        window: &mut Window,
+        _leader_id: PeerId,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<()> {
         cx.notify();
-
-        let call = self.active_call()?;
-        let room = call.read(cx).room()?.read(cx);
-        let participant = room.remote_participant_for_peer_id(leader_id)?;
-
-        let leader_in_this_app;
-        let leader_in_this_project;
-        match participant.location {
-            call::ParticipantLocation::SharedProject { project_id } => {
-                leader_in_this_app = true;
-                leader_in_this_project = Some(project_id) == self.project.read(cx).remote_id();
-            }
-            call::ParticipantLocation::UnsharedProject => {
-                leader_in_this_app = true;
-                leader_in_this_project = false;
-            }
-            call::ParticipantLocation::External => {
-                leader_in_this_app = false;
-                leader_in_this_project = false;
-            }
-        };
-
-        let state = self.follower_states.get(&leader_id)?;
-        let mut item_to_activate = None;
-        if let (Some(active_view_id), true) = (state.active_view_id, leader_in_this_app) {
-            if let Some(item) = state.items_by_leader_view_id.get(&active_view_id) {
-                if leader_in_this_project || !item.view.is_project_item(window, cx) {
-                    item_to_activate = Some((item.location, item.view.boxed_clone()));
-                }
-            }
-        } else if let Some(shared_screen) =
-            self.shared_screen_for_peer(leader_id, &state.center_pane, window, cx)
-        {
-            item_to_activate = Some((None, Box::new(shared_screen)));
-        }
-
-        let (panel_id, item) = item_to_activate?;
-
-        let mut transfer_focus = state.center_pane.read(cx).has_focus(window, cx);
-        let pane;
-        if let Some(panel_id) = panel_id {
-            pane = self
-                .activate_panel_for_proto_id(panel_id, window, cx)?
-                .pane(cx)?;
-            let state = self.follower_states.get_mut(&leader_id)?;
-            state.dock_pane = Some(pane.clone());
-        } else {
-            pane = state.center_pane.clone();
-            let state = self.follower_states.get_mut(&leader_id)?;
-            if let Some(dock_pane) = state.dock_pane.take() {
-                transfer_focus |= dock_pane.focus_handle(cx).contains_focused(window, cx);
-            }
-        }
-
-        pane.update(cx, |pane, cx| {
-            let focus_active_item = pane.has_focus(window, cx) || transfer_focus;
-            if let Some(index) = pane.index_for_item(item.as_ref()) {
-                pane.activate_item(index, false, false, window, cx);
-            } else {
-                pane.add_item(item.boxed_clone(), false, false, None, window, cx)
-            }
-
-            if focus_active_item {
-                pane.focus_active_item(window, cx)
-            }
-        });
 
         None
     }
@@ -4404,24 +4125,12 @@ impl Workspace {
     #[cfg(not(target_os = "windows"))]
     fn shared_screen_for_peer(
         &self,
-        peer_id: PeerId,
-        pane: &Entity<Pane>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Option<Entity<SharedScreen>> {
-        let call = self.active_call()?;
-        let room = call.read(cx).room()?.read(cx);
-        let participant = room.remote_participant_for_peer_id(peer_id)?;
-        let track = participant.video_tracks.values().next()?.clone();
-        let user = participant.user.clone();
-
-        for item in pane.read(cx).items_of_type::<SharedScreen>() {
-            if item.read(cx).peer_id == peer_id {
-                return Some(item);
-            }
-        }
-
-        Some(cx.new(|cx| SharedScreen::new(track, peer_id, user.clone(), window, cx)))
+        _peer_id: PeerId,
+        _pane: &Entity<Pane>,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Option<()> {
+        None
     }
 
     pub fn on_window_activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4452,24 +4161,17 @@ impl Workspace {
         }
     }
 
-    pub fn active_call(&self) -> Option<&Entity<ActiveCall>> {
-        self.active_call.as_ref().map(|(call, _)| call)
+    pub fn active_call(&self) -> Option<()> {
+        None
     }
 
     fn on_active_call_event(
         &mut self,
-        _: &Entity<ActiveCall>,
-        event: &call::room::Event,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _: (),
+        _event: (),
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) {
-        match event {
-            call::room::Event::ParticipantLocationChanged { participant_id }
-            | call::room::Event::RemoteVideoTracksChanged { participant_id } => {
-                self.leader_updated(*participant_id, window, cx);
-            }
-            _ => {}
-        }
     }
 
     pub fn database_id(&self) -> Option<WorkspaceId> {
@@ -5168,23 +4870,6 @@ fn leader_border_for_pane(
     _: &Window,
     cx: &App,
 ) -> Option<Div> {
-    let (leader_id, _follower_state) = follower_states.iter().find_map(|(leader_id, state)| {
-        if state.pane() == pane {
-            Some((*leader_id, state))
-        } else {
-            None
-        }
-    })?;
-
-    let room = ActiveCall::try_global(cx)?.read(cx).room()?.read(cx);
-    let leader = room.remote_participant_for_peer_id(leader_id)?;
-
-    let mut leader_color = cx
-        .theme()
-        .players()
-        .color_for_participant(leader.participant_index.0)
-        .cursor;
-    leader_color.fade_out(0.3);
     Some(
         div()
             .absolute()
@@ -5192,7 +4877,7 @@ fn leader_border_for_pane(
             .left_0()
             .top_0()
             .border_2()
-            .border_color(leader_color),
+            .border_color(Hsla::black()),
     )
 }
 
@@ -5532,8 +5217,8 @@ impl Render for Workspace {
                                                         })
                                                         .child(self.center.render(
                                                             &self.project,
-                                                            &self.follower_states,
-                                                            self.active_call(),
+                                                            (),
+                                                            None,
                                                             &self.active_pane,
                                                             self.zoomed.as_ref(),
                                                             &self.app_state,
@@ -5633,83 +5318,9 @@ impl WorkspaceStore {
     pub fn new(client: Arc<Client>, cx: &mut Context<Self>) -> Self {
         Self {
             workspaces: Default::default(),
-            _subscriptions: vec![
-                client.add_request_handler(cx.weak_entity(), Self::handle_follow),
-                client.add_message_handler(cx.weak_entity(), Self::handle_update_followers),
-            ],
+            _subscriptions: vec![],
             client,
         }
-    }
-
-    pub fn update_followers(
-        &self,
-        project_id: Option<u64>,
-        update: proto::update_followers::Variant,
-        cx: &App,
-    ) -> Option<()> {
-        let active_call = ActiveCall::try_global(cx)?;
-        let room_id = active_call.read(cx).room()?.read(cx).id();
-        self.client
-            .send(proto::UpdateFollowers {
-                room_id,
-                project_id,
-                variant: Some(update),
-            })
-            .log_err()
-    }
-
-    pub async fn handle_follow(
-        this: Entity<Self>,
-        envelope: TypedEnvelope<proto::Follow>,
-        mut cx: AsyncApp,
-    ) -> Result<proto::FollowResponse> {
-        this.update(&mut cx, |this, cx| {
-            let follower = Follower {
-                project_id: envelope.payload.project_id,
-                peer_id: envelope.original_sender_id()?,
-            };
-
-            let mut response = proto::FollowResponse::default();
-            this.workspaces.retain(|workspace| {
-                workspace
-                    .update(cx, |workspace, window, cx| {
-                        let handler_response =
-                            workspace.handle_follow(follower.project_id, window, cx);
-                        if let Some(active_view) = handler_response.active_view.clone() {
-                            if workspace.project.read(cx).remote_id() == follower.project_id {
-                                response.active_view = Some(active_view)
-                            }
-                        }
-                    })
-                    .is_ok()
-            });
-
-            Ok(response)
-        })?
-    }
-
-    async fn handle_update_followers(
-        this: Entity<Self>,
-        envelope: TypedEnvelope<proto::UpdateFollowers>,
-        mut cx: AsyncApp,
-    ) -> Result<()> {
-        let leader_id = envelope.original_sender_id()?;
-        let update = envelope.payload;
-
-        this.update(&mut cx, |this, cx| {
-            this.workspaces.retain(|workspace| {
-                workspace
-                    .update(cx, |workspace, window, cx| {
-                        let project_id = workspace.project.read(cx).remote_id();
-                        if update.project_id != project_id && update.project_id.is_some() {
-                            return;
-                        }
-                        workspace.handle_update_followers(leader_id, update.clone(), window, cx);
-                    })
-                    .is_ok()
-            });
-            Ok(())
-        })?
     }
 }
 
@@ -5780,223 +5391,22 @@ actions!(collab, [OpenChannelNotes]);
 actions!(zed, [OpenLog]);
 
 async fn join_channel_internal(
-    channel_id: ChannelId,
-    app_state: &Arc<AppState>,
-    requesting_window: Option<WindowHandle<Workspace>>,
-    active_call: &Entity<ActiveCall>,
-    cx: &mut AsyncApp,
+    _channel_id: ChannelId,
+    _app_state: &Arc<AppState>,
+    _requesting_window: Option<WindowHandle<Workspace>>,
+    _active_call: (),
+    _cx: &mut AsyncApp,
 ) -> Result<bool> {
-    let (should_prompt, open_room) = active_call.update(cx, |active_call, cx| {
-        let Some(room) = active_call.room().map(|room| room.read(cx)) else {
-            return (false, None);
-        };
-
-        let already_in_channel = room.channel_id() == Some(channel_id);
-        let should_prompt = room.is_sharing_project()
-            && !room.remote_participants().is_empty()
-            && !already_in_channel;
-        let open_room = if already_in_channel {
-            active_call.room().cloned()
-        } else {
-            None
-        };
-        (should_prompt, open_room)
-    })?;
-
-    if let Some(room) = open_room {
-        let task = room.update(cx, |room, cx| {
-            if let Some((project, host)) = room.most_active_project(cx) {
-                return Some(join_in_room_project(project, host, app_state.clone(), cx));
-            }
-
-            None
-        })?;
-        if let Some(task) = task {
-            task.await?;
-        }
-        return anyhow::Ok(true);
-    }
-
-    if should_prompt {
-        if let Some(workspace) = requesting_window {
-            let answer = workspace
-                .update(cx, |_, window, cx| {
-                    window.prompt(
-                        PromptLevel::Warning,
-                        "Do you want to switch channels?",
-                        Some("Leaving this call will unshare your current project."),
-                        &["Yes, Join Channel", "Cancel"],
-                        cx,
-                    )
-                })?
-                .await;
-
-            if answer == Ok(1) {
-                return Ok(false);
-            }
-        } else {
-            return Ok(false); // unreachable!() hopefully
-        }
-    }
-
-    let client = cx.update(|cx| active_call.read(cx).client())?;
-
-    let mut client_status = client.status();
-
-    // this loop will terminate within client::CONNECTION_TIMEOUT seconds.
-    'outer: loop {
-        let Some(status) = client_status.recv().await else {
-            return Err(anyhow!("error connecting"));
-        };
-
-        match status {
-            Status::Connecting
-            | Status::Authenticating
-            | Status::Reconnecting
-            | Status::Reauthenticating => continue,
-            Status::Connected { .. } => break 'outer,
-            Status::SignedOut => return Err(ErrorCode::SignedOut.into()),
-            Status::UpgradeRequired => return Err(ErrorCode::UpgradeRequired.into()),
-            Status::ConnectionError | Status::ConnectionLost | Status::ReconnectionError { .. } => {
-                return Err(ErrorCode::Disconnected.into());
-            }
-        }
-    }
-
-    let room = active_call
-        .update(cx, |active_call, cx| {
-            active_call.join_channel(channel_id, cx)
-        })?
-        .await?;
-
-    let Some(room) = room else {
-        return anyhow::Ok(true);
-    };
-
-    room.update(cx, |room, _| room.room_update_completed())?
-        .await;
-
-    let task = room.update(cx, |room, cx| {
-        if let Some((project, host)) = room.most_active_project(cx) {
-            return Some(join_in_room_project(project, host, app_state.clone(), cx));
-        }
-
-        // If you are the first to join a channel, see if you should share your project.
-        if room.remote_participants().is_empty() && !room.local_participant_is_guest() {
-            if let Some(workspace) = requesting_window {
-                let project = workspace.update(cx, |workspace, _, cx| {
-                    let project = workspace.project.read(cx);
-
-                    if !CallSettings::get_global(cx).share_on_join {
-                        return None;
-                    }
-
-                    if (project.is_local() || project.is_via_ssh())
-                        && project.visible_worktrees(cx).any(|tree| {
-                            tree.read(cx)
-                                .root_entry()
-                                .map_or(false, |entry| entry.is_dir())
-                        })
-                    {
-                        Some(workspace.project.clone())
-                    } else {
-                        None
-                    }
-                });
-                if let Ok(Some(project)) = project {
-                    return Some(cx.spawn(async move |room, cx| {
-                        room.update(cx, |room, cx| room.share_project(project, cx))?
-                            .await?;
-                        Ok(())
-                    }));
-                }
-            }
-        }
-
-        None
-    })?;
-    if let Some(task) = task {
-        task.await?;
-        return anyhow::Ok(true);
-    }
     anyhow::Ok(false)
 }
 
 pub fn join_channel(
-    channel_id: ChannelId,
-    app_state: Arc<AppState>,
-    requesting_window: Option<WindowHandle<Workspace>>,
+    _channel_id: ChannelId,
+    _app_state: Arc<AppState>,
+    _requesting_window: Option<WindowHandle<Workspace>>,
     cx: &mut App,
 ) -> Task<Result<()>> {
-    let active_call = ActiveCall::global(cx);
-    cx.spawn(async move |cx| {
-        let result = join_channel_internal(
-            channel_id,
-            &app_state,
-            requesting_window,
-            &active_call,
-             cx,
-        )
-            .await;
-
-        // join channel succeeded, and opened a window
-        if matches!(result, Ok(true)) {
-            return anyhow::Ok(());
-        }
-
-        // find an existing workspace to focus and show call controls
-        let mut active_window =
-            requesting_window.or_else(|| activate_any_workspace_window( cx));
-        if active_window.is_none() {
-            // no open workspaces, make one to show the error in (blergh)
-            let (window_handle, _) = cx
-                .update(|cx| {
-                    Workspace::new_local(vec![], app_state.clone(), requesting_window, None, cx)
-                })?
-                .await?;
-
-            if result.is_ok() {
-                cx.update(|cx| {
-                    cx.dispatch_action(&OpenChannelNotes);
-                }).log_err();
-            }
-
-            active_window = Some(window_handle);
-        }
-
-        if let Err(err) = result {
-            log::error!("failed to join channel: {}", err);
-            if let Some(active_window) = active_window {
-                active_window
-                    .update(cx, |_, window, cx| {
-                        let detail: SharedString = match err.error_code() {
-                            ErrorCode::SignedOut => {
-                                "Please sign in to continue.".into()
-                            }
-                            ErrorCode::UpgradeRequired => {
-                                "Your are running an unsupported version of Zed. Please update to continue.".into()
-                            }
-                            ErrorCode::NoSuchChannel => {
-                                "No matching channel was found. Please check the link and try again.".into()
-                            }
-                            ErrorCode::Forbidden => {
-                                "This channel is private, and you do not have access. Please ask someone to add you and try again.".into()
-                            }
-                            ErrorCode::Disconnected => "Please check your internet connection and try again.".into(),
-                            _ => format!("{}\n\nPlease try again.", err).into(),
-                        };
-                        window.prompt(
-                            PromptLevel::Critical,
-                            "Failed to join channel",
-                            Some(&detail),
-                            &["Ok"],
-                        cx)
-                    })?
-                    .await
-                    .ok();
-            }
-        }
-
+    cx.spawn(|_cx| async move {
         // return ok, we showed the error to the user.
         anyhow::Ok(())
     })
@@ -6380,8 +5790,8 @@ fn serialize_ssh_project(
 
 pub fn join_in_room_project(
     project_id: u64,
-    follow_user_id: u64,
-    app_state: Arc<AppState>,
+    _follow_user_id: u64,
+    _app_state: Arc<AppState>,
     cx: &mut App,
 ) -> Task<Result<()>> {
     let windows = cx.windows();
@@ -6402,62 +5812,11 @@ pub fn join_in_room_project(
                 })
         });
 
-        let workspace = if let Some(existing_workspace) = existing_workspace {
-            existing_workspace
-        } else {
-            let active_call = cx.update(|cx| ActiveCall::global(cx))?;
-            let room = active_call
-                .read_with(cx, |call, _| call.room().cloned())?
-                .ok_or_else(|| anyhow!("not in a call"))?;
-            let project = room
-                .update(cx, |room, cx| {
-                    room.join_project(
-                        project_id,
-                        app_state.languages.clone(),
-                        app_state.fs.clone(),
-                        cx,
-                    )
-                })?
-                .await?;
+        let workspace = existing_workspace.unwrap();
 
-            let window_bounds_override = window_bounds_env_override();
-            cx.update(|cx| {
-                let mut options = (app_state.build_window_options)(None, cx);
-                options.window_bounds = window_bounds_override.map(WindowBounds::Windowed);
-                cx.open_window(options, |window, cx| {
-                    cx.new(|cx| {
-                        Workspace::new(Default::default(), project, app_state.clone(), window, cx)
-                    })
-                })
-            })??
-        };
-
-        workspace.update(cx, |workspace, window, cx| {
+        workspace.update(&mut cx, |_, window, cx| {
             cx.activate(true);
             window.activate_window();
-
-            if let Some(room) = ActiveCall::global(cx).read(cx).room().cloned() {
-                let follow_peer_id = room
-                    .read(cx)
-                    .remote_participants()
-                    .iter()
-                    .find(|(_, participant)| participant.user.id == follow_user_id)
-                    .map(|(_, p)| p.peer_id)
-                    .or_else(|| {
-                        // If we couldn't follow the given user, follow the host instead.
-                        let collaborator = workspace
-                            .project()
-                            .read(cx)
-                            .collaborators()
-                            .values()
-                            .find(|collaborator| collaborator.is_host)?;
-                        Some(collaborator.peer_id)
-                    });
-
-                if let Some(follow_peer_id) = follow_peer_id {
-                    workspace.follow(follow_peer_id, window, cx);
-                }
-            }
         })?;
 
         anyhow::Ok(())

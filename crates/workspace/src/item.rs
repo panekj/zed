@@ -726,20 +726,6 @@ impl<T: Item> ItemHandle for Entity<T> {
 
                             workspace.update_in(cx, |workspace, window, cx| {
                                 let Some(item) = item.upgrade() else { return };
-                                workspace.update_followers(
-                                    is_project_item,
-                                    proto::update_followers::Variant::UpdateView(
-                                        proto::UpdateView {
-                                            id: item
-                                                .remote_id(workspace.client(), window, cx)
-                                                .map(|id| id.to_proto()),
-                                            variant: pending_update.borrow_mut().take(),
-                                            leader_id,
-                                        },
-                                    ),
-                                    window,
-                                    cx,
-                                );
                             })?;
                             cx.background_executor().timer(LEADER_UPDATE_THROTTLE).await;
                         }

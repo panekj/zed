@@ -62,64 +62,10 @@ impl Manager {
         });
 
         self.projects.insert(project.downgrade());
-        if self.maintain_connection.is_none() {
-            self.maintain_connection = Some(cx.spawn({
-                let client = self.client.clone();
-                async move |_, cx| {
-                    Self::maintain_connection(manager, client.clone(), cx)
-                        .await
-                        .log_err()
-                }
-            }));
-        }
     }
 
     fn reconnected(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
-        let mut projects = HashMap::default();
-
-        let request = self.client.request_envelope(proto::RejoinRemoteProjects {
-            rejoined_projects: self
-                .projects
-                .iter()
-                .filter_map(|project| {
-                    if let Some(handle) = project.upgrade() {
-                        let project = handle.read(cx);
-                        let project_id = project.remote_id()?;
-                        projects.insert(project_id, handle.clone());
-                        Some(proto::RejoinProject {
-                            id: project_id,
-                            worktrees: project
-                                .worktrees(cx)
-                                .map(|worktree| {
-                                    let worktree = worktree.read(cx);
-                                    proto::RejoinWorktree {
-                                        id: worktree.id().to_proto(),
-                                        scan_id: worktree.completed_scan_id() as u64,
-                                    }
-                                })
-                                .collect(),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        });
-
-        cx.spawn(async move |this, cx| {
-            let response = request.await?;
-            let message_id = response.message_id;
-
-            this.update(cx, |_, cx| {
-                for rejoined_project in response.payload.rejoined_projects {
-                    if let Some(project) = projects.get(&rejoined_project.id) {
-                        project.update(cx, |project, cx| {
-                            project.rejoined(rejoined_project, message_id, cx).log_err();
-                        });
-                    }
-                }
-            })
-        })
+        Task::ready(Ok(()))
     }
 
     fn connection_lost(&mut self, cx: &mut Context<Self>) {

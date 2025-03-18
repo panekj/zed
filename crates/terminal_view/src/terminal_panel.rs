@@ -1204,7 +1204,7 @@ impl Render for TerminalPanel {
             .update(cx, |workspace, cx| {
                 registrar.size_full().child(self.center.render(
                     workspace.project(),
-                    &HashMap::default(),
+                    (),
                     None,
                     &self.active_pane,
                     workspace.zoomed_item(),

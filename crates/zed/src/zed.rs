@@ -386,38 +386,14 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) {
         let project_panel = ProjectPanel::load(workspace_handle.clone(), cx.clone());
         let outline_panel = OutlinePanel::load(workspace_handle.clone(), cx.clone());
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
-        let channels_panel =
-            collab_ui::collab_panel::CollabPanel::load(workspace_handle.clone(), cx.clone());
-        let chat_panel =
-            collab_ui::chat_panel::ChatPanel::load(workspace_handle.clone(), cx.clone());
-        let notification_panel = collab_ui::notification_panel::NotificationPanel::load(
-            workspace_handle.clone(),
-            cx.clone(),
-        );
 
-        let (
-            project_panel,
-            outline_panel,
-            terminal_panel,
-            channels_panel,
-            chat_panel,
-            notification_panel,
-        ) = futures::try_join!(
-            project_panel,
-            outline_panel,
-            terminal_panel,
-            channels_panel,
-            chat_panel,
-            notification_panel,
-        )?;
+        let (project_panel, outline_panel, terminal_panel) =
+            futures::try_join!(project_panel, outline_panel, terminal_panel,)?;
 
         workspace_handle.update_in(cx, |workspace, window, cx| {
             workspace.add_panel(project_panel, window, cx);
             workspace.add_panel(outline_panel, window, cx);
             workspace.add_panel(terminal_panel, window, cx);
-            workspace.add_panel(channels_panel, window, cx);
-            workspace.add_panel(chat_panel, window, cx);
-            workspace.add_panel(notification_panel, window, cx);
             cx.when_flag_enabled::<Debugger>(window, |_, window, cx| {
                 cx.spawn_in(
                     window,
@@ -719,32 +695,6 @@ fn register_actions(
              window: &mut Window,
              cx: &mut Context<Workspace>| {
                 workspace.toggle_panel_focus::<OutlinePanel>(window, cx);
-            },
-        )
-        .register_action(
-            |workspace: &mut Workspace,
-             _: &collab_ui::collab_panel::ToggleFocus,
-             window: &mut Window,
-             cx: &mut Context<Workspace>| {
-                workspace.toggle_panel_focus::<collab_ui::collab_panel::CollabPanel>(window, cx);
-            },
-        )
-        .register_action(
-            |workspace: &mut Workspace,
-             _: &collab_ui::chat_panel::ToggleFocus,
-             window: &mut Window,
-             cx: &mut Context<Workspace>| {
-                workspace.toggle_panel_focus::<collab_ui::chat_panel::ChatPanel>(window, cx);
-            },
-        )
-        .register_action(
-            |workspace: &mut Workspace,
-             _: &collab_ui::notification_panel::ToggleFocus,
-             window: &mut Window,
-             cx: &mut Context<Workspace>| {
-                workspace.toggle_panel_focus::<collab_ui::notification_panel::NotificationPanel>(
-                    window, cx,
-                );
             },
         )
         .register_action(
@@ -4180,9 +4130,6 @@ mod tests {
             gpui_tokio::init(cx);
             vim_mode_setting::init(cx);
             theme::init(theme::LoadThemes::JustBase, cx);
-            audio::init((), cx);
-            channel::init(&app_state.client, app_state.user_store.clone(), cx);
-            call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
             notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
             workspace::init(app_state.clone(), cx);
             Project::init_settings(cx);
@@ -4190,7 +4137,6 @@ mod tests {
             command_palette::init(cx);
             language::init(cx);
             editor::init(cx);
-            collab_ui::init(&app_state, cx);
             git_ui::init(cx);
             project_panel::init(cx);
             outline_panel::init(cx);

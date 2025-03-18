@@ -773,9 +773,6 @@ impl Project {
         Self::init_settings(cx);
 
         let client: AnyProtoClient = client.clone().into();
-        client.add_entity_message_handler(Self::handle_add_collaborator);
-        client.add_entity_message_handler(Self::handle_update_project_collaborator);
-        client.add_entity_message_handler(Self::handle_remove_collaborator);
         client.add_entity_message_handler(Self::handle_update_project);
         client.add_entity_message_handler(Self::handle_unshare_project);
         client.add_entity_request_handler(Self::handle_update_buffer);
@@ -1373,16 +1370,6 @@ impl Project {
                 }
             })
             .collect::<Vec<_>>();
-
-        let user_ids = response
-            .payload
-            .collaborators
-            .iter()
-            .map(|peer| peer.user_id)
-            .collect();
-        user_store
-            .update(&mut cx, |user_store, cx| user_store.get_users(user_ids, cx))?
-            .await?;
 
         this.update(&mut cx, |this, cx| {
             this.set_collaborators_from_proto(response.payload.collaborators, cx)?;
@@ -4085,103 +4072,6 @@ impl Project {
             } else {
                 this.disconnected_from_host(cx);
             }
-            Ok(())
-        })?
-    }
-
-    async fn handle_add_collaborator(
-        this: Entity<Self>,
-        mut envelope: TypedEnvelope<proto::AddProjectCollaborator>,
-        mut cx: AsyncApp,
-    ) -> Result<()> {
-        let collaborator = envelope
-            .payload
-            .collaborator
-            .take()
-            .ok_or_else(|| anyhow!("empty collaborator"))?;
-
-        let collaborator = Collaborator::from_proto(collaborator)?;
-        this.update(&mut cx, |this, cx| {
-            this.buffer_store.update(cx, |buffer_store, _| {
-                buffer_store.forget_shared_buffers_for(&collaborator.peer_id);
-            });
-            this.breakpoint_store.read(cx).broadcast();
-            cx.emit(Event::CollaboratorJoined(collaborator.peer_id));
-            this.collaborators
-                .insert(collaborator.peer_id, collaborator);
-        })?;
-
-        Ok(())
-    }
-
-    async fn handle_update_project_collaborator(
-        this: Entity<Self>,
-        envelope: TypedEnvelope<proto::UpdateProjectCollaborator>,
-        mut cx: AsyncApp,
-    ) -> Result<()> {
-        let old_peer_id = envelope
-            .payload
-            .old_peer_id
-            .ok_or_else(|| anyhow!("missing old peer id"))?;
-        let new_peer_id = envelope
-            .payload
-            .new_peer_id
-            .ok_or_else(|| anyhow!("missing new peer id"))?;
-        this.update(&mut cx, |this, cx| {
-            let collaborator = this
-                .collaborators
-                .remove(&old_peer_id)
-                .ok_or_else(|| anyhow!("received UpdateProjectCollaborator for unknown peer"))?;
-            let is_host = collaborator.is_host;
-            this.collaborators.insert(new_peer_id, collaborator);
-
-            log::info!("peer {} became {}", old_peer_id, new_peer_id,);
-            this.buffer_store.update(cx, |buffer_store, _| {
-                buffer_store.update_peer_id(&old_peer_id, new_peer_id)
-            });
-
-            if is_host {
-                this.buffer_store
-                    .update(cx, |buffer_store, _| buffer_store.discard_incomplete());
-                this.enqueue_buffer_ordered_message(BufferOrderedMessage::Resync)
-                    .unwrap();
-                cx.emit(Event::HostReshared);
-            }
-
-            cx.emit(Event::CollaboratorUpdated {
-                old_peer_id,
-                new_peer_id,
-            });
-            Ok(())
-        })?
-    }
-
-    async fn handle_remove_collaborator(
-        this: Entity<Self>,
-        envelope: TypedEnvelope<proto::RemoveProjectCollaborator>,
-        mut cx: AsyncApp,
-    ) -> Result<()> {
-        this.update(&mut cx, |this, cx| {
-            let peer_id = envelope
-                .payload
-                .peer_id
-                .ok_or_else(|| anyhow!("invalid peer id"))?;
-            let replica_id = this
-                .collaborators
-                .remove(&peer_id)
-                .ok_or_else(|| anyhow!("unknown peer {:?}", peer_id))?
-                .replica_id;
-            this.buffer_store.update(cx, |buffer_store, cx| {
-                buffer_store.forget_shared_buffers_for(&peer_id);
-                for buffer in buffer_store.buffers() {
-                    buffer.update(cx, |buffer, cx| buffer.remove_peer(replica_id, cx));
-                }
-            });
-            this.git_store.update(cx, |git_store, _| {
-                git_store.forget_shared_diffs_for(&peer_id);
-            });
-
-            cx.emit(Event::CollaboratorLeft(peer_id));
             Ok(())
         })?
     }
