@@ -10,7 +10,7 @@ use paths::remote_servers_dir;
 use release_channel::{AppCommitSha, ReleaseChannel};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use settings::{Settings, SettingsSources, SettingsStore};
+use settings::{Settings, SettingsSources};
 use smol::{fs, io::AsyncReadExt};
 use smol::{fs::File, process::Command};
 use std::{
@@ -97,7 +97,7 @@ impl Drop for MacOsUnmounter {
     }
 }
 
-struct AutoUpdateSetting(bool);
+struct AutoUpdateSetting(());
 
 /// Whether or not to automatically check for updates.
 ///
@@ -106,29 +106,12 @@ struct AutoUpdateSetting(bool);
 #[serde(transparent)]
 struct AutoUpdateSettingContent(bool);
 
-impl Settings for AutoUpdateSetting {
-    const KEY: Option<&'static str> = Some("auto_update");
-
-    type FileContent = Option<AutoUpdateSettingContent>;
-
-    fn load(sources: SettingsSources<Self::FileContent>, _: &mut App) -> Result<Self> {
-        let auto_update = [sources.server, sources.release_channel, sources.user]
-            .into_iter()
-            .find_map(|value| value.copied().flatten())
-            .unwrap_or(sources.default.ok_or_else(Self::missing_default)?);
-
-        Ok(Self(auto_update.0))
-    }
-}
-
 #[derive(Default)]
 struct GlobalAutoUpdate(Option<Entity<AutoUpdater>>);
 
 impl Global for GlobalAutoUpdate {}
 
-pub fn init(http_client: Arc<HttpClientWithUrl>, cx: &mut App) {
-    AutoUpdateSetting::register(cx);
-
+pub fn init(_: Arc<HttpClientWithUrl>, cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(|_, action: &Check, window, cx| check(action, window, cx));
 
@@ -138,37 +121,7 @@ pub fn init(http_client: Arc<HttpClientWithUrl>, cx: &mut App) {
     })
     .detach();
 
-    let version = release_channel::AppVersion::global(cx);
-    let auto_updater = cx.new(|cx| {
-        let updater = AutoUpdater::new(version, http_client);
-
-        let poll_for_updates = ReleaseChannel::try_global(cx)
-            .map(|channel| channel.poll_for_updates())
-            .unwrap_or(false);
-
-        if option_env!("ZED_UPDATE_EXPLANATION").is_none()
-            && env::var("ZED_UPDATE_EXPLANATION").is_err()
-            && poll_for_updates
-        {
-            let mut update_subscription = AutoUpdateSetting::get_global(cx)
-                .0
-                .then(|| updater.start_polling(cx));
-
-            cx.observe_global::<SettingsStore>(move |updater: &mut AutoUpdater, cx| {
-                if AutoUpdateSetting::get_global(cx).0 {
-                    if update_subscription.is_none() {
-                        update_subscription = Some(updater.start_polling(cx))
-                    }
-                } else {
-                    update_subscription.take();
-                }
-            })
-            .detach();
-        }
-
-        updater
-    });
-    cx.set_global(GlobalAutoUpdate(Some(auto_updater)));
+    cx.set_global(GlobalAutoUpdate(None));
 }
 
 pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
@@ -183,35 +136,13 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
         return;
     }
 
-    if let Ok(message) = env::var("ZED_UPDATE_EXPLANATION") {
-        drop(window.prompt(
-            gpui::PromptLevel::Info,
-            "Zed was installed via a package manager.",
-            Some(&message),
-            &["Ok"],
-            cx,
-        ));
-        return;
-    }
-
-    if !ReleaseChannel::try_global(cx)
-        .map(|channel| channel.poll_for_updates())
-        .unwrap_or(false)
-    {
-        return;
-    }
-
-    if let Some(updater) = AutoUpdater::get(cx) {
-        updater.update(cx, |updater, cx| updater.poll(cx));
-    } else {
-        drop(window.prompt(
-            gpui::PromptLevel::Info,
-            "Could not check for updates",
-            Some("Auto-updates disabled for non-bundled app."),
-            &["Ok"],
-            cx,
-        ));
-    }
+    drop(window.prompt(
+        gpui::PromptLevel::Info,
+        "Could not check for updates",
+        Some("Auto-updates disabled for non-bundled app."),
+        &["Ok"],
+        cx,
+    ));
 }
 
 pub fn view_release_notes(_: &ViewReleaseNotes, cx: &mut App) -> Option<()> {
@@ -562,27 +493,18 @@ async fn download_remote_server_binary(
 }
 
 fn build_remote_server_update_request_body(cx: &AsyncApp) -> Result<UpdateRequestBody> {
-    let (installation_id, release_channel, telemetry_enabled, is_staff) = cx.update(|cx| {
-        let telemetry = Client::global(cx).telemetry().clone();
-        let is_staff = telemetry.is_staff();
-        let installation_id = telemetry.installation_id();
+    let release_channel = cx.update(|cx| {
         let release_channel =
             ReleaseChannel::try_global(cx).map(|release_channel| release_channel.display_name());
-        let telemetry_enabled = TelemetrySettings::get_global(cx).metrics;
 
-        (
-            installation_id,
-            release_channel,
-            telemetry_enabled,
-            is_staff,
-        )
+        release_channel
     })?;
 
     Ok(UpdateRequestBody {
-        installation_id,
+        installation_id: None,
         release_channel,
-        telemetry: telemetry_enabled,
-        is_staff,
+        telemetry: false,
+        is_staff: None,
         destination: "remote",
     })
 }
