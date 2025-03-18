@@ -1,40 +1,40 @@
 [package]
-name = "lsp"
+name    = "lsp"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/lsp.rs"
+path    = "src/lsp.rs"
 doctest = false
 
 [features]
 test-support = ["async-pipe"]
 
 [dependencies]
-anyhow.workspace = true
-async-pipe = { workspace = true, optional = true }
-collections.workspace = true
-futures.workspace = true
-gpui.workspace = true
-log.workspace = true
-lsp-types = { git = "https://github.com/zed-industries/lsp-types", rev = "1fff0dd12e2071c5667327394cfec163d2a466ab" }
-parking_lot.workspace = true
-postage.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-schemars.workspace = true
-smol.workspace = true
-util.workspace = true
-release_channel.workspace = true
+anyhow          = { workspace = true }
+async-pipe      = { workspace = true, optional = true }
+collections     = { workspace = true }
+futures         = { workspace = true }
+gpui            = { workspace = true }
+log             = { workspace = true }
+lsp-types       = { git = "https://github.com/zed-industries/lsp-types", rev = "1fff0dd12e2071c5667327394cfec163d2a466ab" }
+parking_lot     = { workspace = true }
+postage         = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+schemars        = { workspace = true }
+smol            = { workspace = true }
+util            = { workspace = true }
+release_channel = { workspace = true }
 
 [dev-dependencies]
-async-pipe.workspace = true
-ctor.workspace = true
-env_logger.workspace = true
-gpui = { workspace = true, features = ["test-support"] }
-util = { workspace = true, features = ["test-support"] }
+async-pipe = { workspace = true }
+ctor       = { workspace = true }
+env_logger = { workspace = true }
+gpui       = { workspace = true, features = ["test-support"] }
+util       = { workspace = true, features = ["test-support"] }

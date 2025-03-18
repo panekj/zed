@@ -1,15 +1,15 @@
 [package]
-name = "zed_emmet"
+name    = "zed_emmet"
 version = "0.0.3"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "Apache-2.0"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/emmet.rs"
+path       = "src/emmet.rs"
 crate-type = ["cdylib"]
 
 [dependencies]

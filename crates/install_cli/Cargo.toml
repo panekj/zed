@@ -1,8 +1,8 @@
 [package]
-name = "install_cli"
+name    = "install_cli"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
@@ -15,7 +15,7 @@ path = "src/install_cli.rs"
 test-support = []
 
 [dependencies]
-anyhow.workspace = true
-gpui.workspace = true
-smol.workspace = true
-util.workspace = true
+anyhow = { workspace = true }
+gpui   = { workspace = true }
+smol   = { workspace = true }
+util   = { workspace = true }

@@ -1,15 +1,15 @@
 [package]
-name = "clock"
+name    = "clock"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/clock.rs"
+path    = "src/clock.rs"
 doctest = false
 
 [features]
@@ -17,5 +17,5 @@ test-support = ["dep:parking_lot"]
 
 [dependencies]
 parking_lot = { workspace = true, optional = true }
-serde.workspace = true
-smallvec.workspace = true
+serde       = { workspace = true }
+smallvec    = { workspace = true }

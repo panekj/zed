@@ -1,20 +1,20 @@
 [package]
-name = "collections"
+name    = "collections"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "Apache-2.0"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/collections.rs"
+path    = "src/collections.rs"
 doctest = false
 
 [features]
 test-support = []
 
 [dependencies]
-indexmap.workspace = true
-rustc-hash.workspace = true
+indexmap   = { workspace = true }
+rustc-hash = { workspace = true }

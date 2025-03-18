@@ -1,17 +1,17 @@
 [package]
-name = "menu"
+name    = "menu"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/menu.rs"
+path    = "src/menu.rs"
 doctest = false
 
 [dependencies]
-gpui.workspace = true
+gpui  = { workspace = true }
 serde = { workspace = true }

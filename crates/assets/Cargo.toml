@@ -1,8 +1,8 @@
 [package]
-name = "assets"
+name    = "assets"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "GPL-3.0-or-later"
 
 [lib]
@@ -12,6 +12,6 @@ path = "src/assets.rs"
 workspace = true
 
 [dependencies]
-anyhow.workspace = true
-gpui.workspace = true
-rust-embed.workspace = true
+anyhow     = { workspace = true }
+gpui       = { workspace = true }
+rust-embed = { workspace = true }

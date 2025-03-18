@@ -1,23 +1,23 @@
 [package]
-name = "sum_tree"
+name    = "sum_tree"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "Apache-2.0"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/sum_tree.rs"
+path    = "src/sum_tree.rs"
 doctest = false
 
 [dependencies]
 arrayvec = "0.7.1"
-rayon.workspace = true
-log.workspace = true
+rayon    = { workspace = true }
+log      = { workspace = true }
 
 [dev-dependencies]
-ctor.workspace = true
-env_logger.workspace = true
-rand.workspace = true
+ctor       = { workspace = true }
+env_logger = { workspace = true }
+rand       = { workspace = true }

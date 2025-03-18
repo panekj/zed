@@ -1,26 +1,26 @@
 [package]
-name = "media"
+name    = "media"
 version = "0.1.0"
-edition.workspace = true
-publish.workspace = true
+edition = { workspace = true }
+publish = { workspace = true }
 license = "Apache-2.0"
 
 [lints]
 workspace = true
 
 [lib]
-path = "src/media.rs"
+path    = "src/media.rs"
 doctest = false
 
 [dependencies]
-anyhow.workspace = true
+anyhow = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-foundation.workspace = true
-ctor.workspace = true
-foreign-types = "0.5"
-metal.workspace = true
-objc = "0.2"
+core-foundation = { workspace = true }
+ctor            = { workspace = true }
+foreign-types   = "0.5"
+metal           = { workspace = true }
+objc            = "0.2"
 
 [build-dependencies]
 bindgen = "0.70.0"
