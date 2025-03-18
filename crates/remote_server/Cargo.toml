@@ -70,8 +70,6 @@ fork.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
-assistant_tool.workspace = true
-assistant_tools.workspace = true
 client = { workspace = true, features = ["test-support"] }
 clock = { workspace = true, features = ["test-support"] }
 dap = { workspace = true, features = ["test-support"] }
@@ -82,7 +80,6 @@ language = { workspace = true, features = ["test-support"] }
 node_runtime = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 remote = { workspace = true, features = ["test-support"] }
-language_model = { workspace = true, features = ["test-support"] }
 lsp = { workspace = true, features=["test-support"] }
 unindent.workspace = true
 serde_json.workspace = true

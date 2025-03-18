@@ -772,24 +772,7 @@ impl ExtensionImports for WasmState {
                         })?)
                     }
                     "context_servers" => {
-                        let configuration = key
-                            .and_then(|key| {
-                                ProjectSettings::get(location, cx)
-                                    .context_servers
-                                    .get(key.as_str())
-                            })
-                            .cloned()
-                            .unwrap_or_default();
-                        Ok(serde_json::to_string(&settings::ContextServerSettings {
-                            command: configuration.command.map(|command| {
-                                settings::CommandSettings {
-                                    path: Some(command.path),
-                                    arguments: Some(command.args),
-                                    env: command.env.map(|env| env.into_iter().collect()),
-                                }
-                            }),
-                            settings: configuration.settings,
-                        })?)
+                        bail!("Disallowed settings category: {}", category);
                     }
                     _ => {
                         bail!("Unknown settings category: {}", category);

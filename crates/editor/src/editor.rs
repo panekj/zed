@@ -2228,7 +2228,6 @@ impl Editor {
                 key_context.add(EDIT_PREDICTION_CONFLICT_KEY_CONTEXT);
             } else {
                 key_context.add(EDIT_PREDICTION_KEY_CONTEXT);
-                key_context.add("copilot_suggestion");
             }
         }
 
@@ -6814,10 +6813,10 @@ impl Editor {
         if self.has_active_inline_completion() {
             self.cycle_inline_completion(Direction::Next, window, cx);
         } else {
-            let is_copilot_disabled = self
+            if self
                 .refresh_inline_completion(false, true, window, cx)
-                .is_none();
-            if is_copilot_disabled {
+                .is_none()
+            {
                 cx.propagate();
             }
         }
@@ -6832,10 +6831,10 @@ impl Editor {
         if self.has_active_inline_completion() {
             self.cycle_inline_completion(Direction::Prev, window, cx);
         } else {
-            let is_copilot_disabled = self
+            if self
                 .refresh_inline_completion(false, true, window, cx)
-                .is_none();
-            if is_copilot_disabled {
+                .is_none()
+            {
                 cx.propagate();
             }
         }
@@ -19500,24 +19499,8 @@ impl Editor {
         let vim_mode = vim_enabled(cx);
 
         let edit_predictions_provider = all_language_settings(file, cx).edit_predictions.provider;
-        let copilot_enabled = edit_predictions_provider
-            == language::language_settings::EditPredictionProvider::Copilot;
-        let copilot_enabled_for_language = self
-            .buffer
-            .read(cx)
-            .language_settings(cx)
-            .show_edit_predictions;
 
         let project = project.read(cx);
-        telemetry::event!(
-            event_type,
-            file_extension,
-            vim_mode,
-            copilot_enabled,
-            copilot_enabled_for_language,
-            edit_predictions_provider,
-            is_via_ssh = project.is_via_ssh(),
-        );
     }
 
     /// Copy the highlighted chunks to the clipboard as JSON. The format is an array of lines,

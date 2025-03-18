@@ -4,7 +4,7 @@ use gpui::{
     Action, App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     ParentElement, Render, Styled, Subscription, Task, WeakEntity, Window, actions, svg,
 };
-use language::language_settings::{EditPredictionProvider, all_language_settings};
+use language::language_settings::all_language_settings;
 use settings::{Settings, SettingsStore};
 use std::sync::Arc;
 use ui::{CheckboxWithLabel, ElevationIndex, Tooltip, prelude::*};
@@ -76,9 +76,10 @@ pub struct WelcomePage {
 
 impl Render for WelcomePage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let edit_prediction_provider_is_zed =
-            all_language_settings(None, cx).edit_predictions.provider
-                == EditPredictionProvider::Zed;
+        let edit_prediction_provider_is_zed = all_language_settings(None, cx)
+            .edit_predictions
+            .provider
+            .is_zed();
 
         let edit_prediction_label = if edit_prediction_provider_is_zed {
             "Edit Prediction Enabled"

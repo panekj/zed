@@ -1,5 +1,4 @@
 mod application_menu;
-mod collab;
 mod onboarding_banner;
 mod platforms;
 mod title_bar_settings;
@@ -15,8 +14,6 @@ use crate::application_menu::{
 };
 
 use crate::platforms::{platform_linux, platform_mac, platform_windows};
-use auto_update::AutoUpdateStatus;
-use call::ActiveCall;
 use client::{Client, UserStore};
 use gpui::{
     Action, AnyElement, App, Context, Corner, Decorations, Element, Entity, InteractiveElement,
@@ -121,7 +118,7 @@ pub struct TitleBar {
     should_move: bool,
     application_menu: Option<Entity<ApplicationMenu>>,
     _subscriptions: Vec<Subscription>,
-    banner: Entity<OnboardingBanner>,
+    banner: Option<Entity<OnboardingBanner>>,
 }
 
 impl Render for TitleBar {
@@ -226,30 +223,9 @@ impl Render for TitleBar {
                             })
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
                     )
-                    .child(self.render_collaborator_list(window, cx))
-                    .when(title_bar_settings.show_onboarding_banner, |title_bar| {
-                        title_bar.child(self.banner.clone())
-                    })
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .pr_1()
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .children(self.render_call_controls(window, cx))
-                            .map(|el| {
-                                let status = self.client.status();
-                                let status = &*status.borrow();
-                                if matches!(status, client::Status::Connected { .. }) {
-                                    el.child(self.render_user_menu_button(cx))
-                                } else {
-                                    el.children(self.render_connection_status(status, cx))
-                                        .when(TitleBarSettings::get_global(cx).show_sign_in, |el| {
-                                            el.child(self.render_sign_in_button(cx))
-                                        })
-                                        .child(self.render_user_menu_button(cx))
-                                }
-                            }),
-                    ),
+                    .when_some(self.banner.clone(), |title_bar, banner| {
+                        title_bar.child(banner)
+                    }),
             )
             .when(!window.is_fullscreen(), |title_bar| {
                 match self.platform_style {
@@ -307,7 +283,6 @@ impl TitleBar {
         let project = workspace.project().clone();
         let user_store = workspace.app_state().user_store.clone();
         let client = workspace.app_state().client.clone();
-        let active_call = ActiveCall::global(cx);
 
         let platform_style = PlatformStyle::platform();
         let application_menu = match platform_style {
@@ -329,21 +304,9 @@ impl TitleBar {
                 cx.notify()
             }),
         );
-        subscriptions.push(cx.subscribe(&project, |_, _, _: &project::Event, cx| cx.notify()));
-        subscriptions.push(cx.observe(&active_call, |this, _, cx| this.active_call_changed(cx)));
+        subscriptions.push(cx.subscribe(&project, |_, _, _, cx| cx.notify()));
         subscriptions.push(cx.observe_window_activation(window, Self::window_activation_changed));
         subscriptions.push(cx.observe(&user_store, |_, _, cx| cx.notify()));
-
-        let banner = cx.new(|cx| {
-            OnboardingBanner::new(
-                "Agentic Onboarding",
-                IconName::ZedAssistant,
-                "Agentic Editing",
-                None,
-                zed_actions::agent::OpenOnboardingModal.boxed_clone(),
-                cx,
-            )
-        });
 
         Self {
             platform_style,
@@ -356,7 +319,7 @@ impl TitleBar {
             user_store,
             client,
             _subscriptions: subscriptions,
-            banner,
+            banner: None,
         }
     }
 
@@ -601,15 +564,6 @@ impl TitleBar {
     }
 
     fn window_activation_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if window.is_window_active() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(Some(&self.project), cx))
-                .detach_and_log_err(cx);
-        } else if cx.active_window().is_none() {
-            ActiveCall::global(cx)
-                .update(cx, |call, cx| call.set_location(None, cx))
-                .detach_and_log_err(cx);
-        }
         self.workspace
             .update(cx, |workspace, cx| {
                 workspace.update_active_view_for_followers(window, cx);
@@ -617,30 +571,10 @@ impl TitleBar {
             .ok();
     }
 
-    fn active_call_changed(&mut self, cx: &mut Context<Self>) {
-        cx.notify();
-    }
-
-    fn share_project(&mut self, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.share_project(project, cx))
-            .detach_and_log_err(cx);
-    }
-
-    fn unshare_project(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        let active_call = ActiveCall::global(cx);
-        let project = self.project.clone();
-        active_call
-            .update(cx, |call, cx| call.unshare_project(project, cx))
-            .log_err();
-    }
-
     fn render_connection_status(
         &self,
         status: &client::Status,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match status {
             client::Status::ConnectionError
@@ -654,33 +588,12 @@ impl TitleBar {
                     .tooltip(Tooltip::text("Disconnected"))
                     .into_any_element(),
             ),
-            client::Status::UpgradeRequired => {
-                let auto_updater = auto_update::AutoUpdater::get(cx);
-                let label = match auto_updater.map(|auto_update| auto_update.read(cx).status()) {
-                    Some(AutoUpdateStatus::Updated { .. }) => "Please restart Zed to Collaborate",
-                    Some(AutoUpdateStatus::Installing { .. })
-                    | Some(AutoUpdateStatus::Downloading { .. })
-                    | Some(AutoUpdateStatus::Checking) => "Updating...",
-                    Some(AutoUpdateStatus::Idle) | Some(AutoUpdateStatus::Errored) | None => {
-                        "Please update Zed to Collaborate"
-                    }
-                };
-
-                Some(
-                    Button::new("connection-status", label)
-                        .label_size(LabelSize::Small)
-                        .on_click(|_, window, cx| {
-                            if let Some(auto_updater) = auto_update::AutoUpdater::get(cx) {
-                                if auto_updater.read(cx).status().is_updated() {
-                                    workspace::reload(&Default::default(), cx);
-                                    return;
-                                }
-                            }
-                            auto_update::check(&Default::default(), window, cx);
-                        })
-                        .into_any_element(),
-                )
-            }
+            client::Status::UpgradeRequired => Some(
+                Button::new("connection-status", "No updates")
+                    .label_size(LabelSize::Small)
+                    .on_click(|_, _window, _cx| return)
+                    .into_any_element(),
+            ),
             _ => None,
         }
     }

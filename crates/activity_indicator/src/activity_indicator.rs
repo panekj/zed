@@ -106,6 +106,10 @@ impl ActivityIndicator {
             )
             .detach();
 
+            if let Some(auto_updater) = auto_updater.as_ref() {
+                cx.observe(auto_updater, |_, _, cx| cx.notify()).detach();
+            }
+
             cx.subscribe(
                 &project.read(cx).lsp_store(),
                 |_, _, event, cx| match event {
@@ -261,6 +265,7 @@ impl ActivityIndicator {
                     this.project.update(cx, |project, cx| {
                         project.remove_environment_error(&abs_path, cx);
                     });
+                    this.dismiss_error_message(&DismissErrorMessage, window, cx);
                     window.dispatch_action(Box::new(workspace::OpenLog), cx);
                 })),
                 tooltip_message: None,
@@ -398,10 +403,9 @@ impl ActivityIndicator {
                         }
                     )
                 ),
-                on_click: Some(Arc::new(move |this, window, cx| {
+                on_click: Some(Arc::new(move |this, _window, _cx| {
                     this.statuses
                         .retain(|status| !downloading.contains(&status.name));
-                    this.dismiss_error_message(&DismissErrorMessage, window, cx)
                 })),
                 tooltip_message: None,
             });
@@ -427,10 +431,9 @@ impl ActivityIndicator {
                         }
                     ),
                 ),
-                on_click: Some(Arc::new(move |this, window, cx| {
+                on_click: Some(Arc::new(move |this, _window, _cx| {
                     this.statuses
                         .retain(|status| !checking_for_update.contains(&status.name));
-                    this.dismiss_error_message(&DismissErrorMessage, window, cx)
                 })),
                 tooltip_message: None,
             });

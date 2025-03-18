@@ -17,7 +17,6 @@ default = []
 test-support = ["multi_buffer/test-support"]
 
 [dependencies]
-agent_settings.workspace = true
 anyhow.workspace = true
 askpass.workspace = true
 buffer_diff.workspace = true
@@ -33,7 +32,6 @@ git.workspace = true
 gpui.workspace = true
 itertools.workspace = true
 language.workspace = true
-language_model.workspace = true
 linkify.workspace = true
 log.workspace = true
 markdown.workspace = true
