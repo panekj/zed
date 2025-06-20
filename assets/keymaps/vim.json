@@ -846,16 +846,7 @@
   },
   {
     "context": "MessageEditor > Editor && VimControl",
-    "bindings": {
-      "enter": "agent::Chat",
-      // TODO: Implement search
-      "/": null,
-      "?": null,
-      "#": null,
-      "*": null,
-      "n": null,
-      "shift-n": null
-    }
+    "bindings": {}
   },
   {
     "context": "os != macos && Editor && edit_prediction_conflict",
