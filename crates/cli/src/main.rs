@@ -411,9 +411,6 @@ mod linux {
 
     use crate::{Detect, InstalledApp};
 
-    static RELEASE_CHANNEL: LazyLock<String> =
-        LazyLock::new(|| include_str!("../../zed/RELEASE_CHANNEL").trim().to_string());
-
     struct App(PathBuf);
 
     impl Detect {
@@ -444,10 +441,10 @@ mod linux {
         fn zed_version_string(&self) -> String {
             format!(
                 "Zed {}{}{} – {}",
-                if *RELEASE_CHANNEL == "stable" {
+                if *release_channel::RELEASE_CHANNEL_NAME == "stable" {
                     "".to_string()
                 } else {
-                    format!("{} ", *RELEASE_CHANNEL)
+                    format!("{} ", *release_channel::RELEASE_CHANNEL_NAME)
                 },
                 option_env!("RELEASE_VERSION").unwrap_or_default(),
                 match option_env!("ZED_COMMIT_SHA") {
@@ -459,7 +456,10 @@ mod linux {
         }
 
         fn launch(&self, ipc_url: String) -> anyhow::Result<()> {
-            let sock_path = paths::data_dir().join(format!("zed-{}.sock", *RELEASE_CHANNEL));
+            let sock_path = paths::data_dir().join(format!(
+                "zed-{}.sock",
+                *release_channel::RELEASE_CHANNEL_NAME
+            ));
             let sock = UnixDatagram::unbound()?;
             if sock.connect(&sock_path).is_err() {
                 self.boot_background(ipc_url)?;
