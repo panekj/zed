@@ -14384,10 +14384,11 @@ dependencies = [
 
 [[package]]
 name = "windows-capture"
-version = "1.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "757c9e7b920233fec91cb314ad92b96853ba2907e3482a193d290d33838e3fc5"
+version = "1.4.3"
+source = "git+https://github.com/zed-industries/windows-capture.git?rev=f0d6c1b6691db75461b732f6d5ff56eed002eeb9#f0d6c1b6691db75461b732f6d5ff56eed002eeb9"
 dependencies = [
+ "clap",
+ "ctrlc",
  "parking_lot",
  "rayon",
  "thiserror 2.0.17",
@@ -16174,8 +16175,3 @@ dependencies = [
  "syn 2.0.106",
  "winnow",
 ]
-
-[[patch.unused]]
-name = "windows-capture"
-version = "1.4.3"
-source = "git+https://github.com/zed-industries/windows-capture.git?rev=f0d6c1b6691db75461b732f6d5ff56eed002eeb9#f0d6c1b6691db75461b732f6d5ff56eed002eeb9"
