@@ -17,7 +17,6 @@ use room::Event;
 use settings::Settings;
 use std::sync::Arc;
 
-pub use livekit_client::{RemoteVideoTrack, RemoteVideoTrackView, RemoteVideoTrackViewEvent};
 pub use participant::ParticipantLocation;
 pub use room::Room;
 

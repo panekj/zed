@@ -6,7 +6,6 @@ use log::info;
 #[cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))]
 mod non_windows_and_freebsd_deps {
     pub(super) use gpui::AsyncApp;
-    pub(super) use libwebrtc::native::apm;
     pub(super) use parking_lot::Mutex;
     pub(super) use rodio::cpal::Sample;
     pub(super) use rodio::source::LimitSettings;
@@ -83,7 +82,7 @@ pub struct Audio {
     output_handle: Option<OutputStream>,
     output_mixer: Option<Mixer>,
     #[cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))]
-    pub echo_canceller: Arc<Mutex<apm::AudioProcessingModule>>,
+    pub echo_canceller: Arc<Mutex<()>>,
     source_cache: HashMap<Sound, Buffered<Decoder<Cursor<Vec<u8>>>>>,
     replays: replays::Replays,
 }
@@ -97,9 +96,7 @@ impl Default for Audio {
                 all(target_os = "windows", target_env = "gnu"),
                 target_os = "freebsd"
             )))]
-            echo_canceller: Arc::new(Mutex::new(apm::AudioProcessingModule::new(
-                true, false, false, false,
-            ))),
+            echo_canceller: Arc::new(Mutex::new(())),
             source_cache: Default::default(),
             replays: Default::default(),
         }
@@ -138,14 +135,6 @@ impl Audio {
                 )))]
                 let source = source.inspect_buffer::<BUFFER_SIZE, _>(move |buffer| {
                     let mut buf: [i16; _] = buffer.map(|s| s.to_sample());
-                    echo_canceller
-                        .lock()
-                        .process_reverse_stream(
-                            &mut buf,
-                            SAMPLE_RATE.get() as i32,
-                            CHANNEL_COUNT.get().into(),
-                        )
-                        .expect("Audio input and output threads should not panic");
                 });
                 output_handle.mixer().add(source);
             }
@@ -186,22 +175,6 @@ impl Audio {
             .limit(LimitSettings::live_performance())
             .process_buffer::<BUFFER_SIZE, _>(move |buffer| {
                 let mut int_buffer: [i16; _] = buffer.map(|s| s.to_sample());
-                if voip_parts
-                    .echo_canceller
-                    .lock()
-                    .process_stream(
-                        &mut int_buffer,
-                        SAMPLE_RATE.get() as i32,
-                        CHANNEL_COUNT.get() as i32,
-                    )
-                    .context("livekit audio processor error")
-                    .log_err()
-                    .is_some()
-                {
-                    for (sample, processed) in buffer.iter_mut().zip(&int_buffer) {
-                        *sample = (*processed).to_sample();
-                    }
-                }
             })
             .denoise()
             .context("Could not set up denoiser")?
@@ -296,7 +269,7 @@ impl Audio {
 
 #[cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))]
 pub struct VoipParts {
-    echo_canceller: Arc<Mutex<apm::AudioProcessingModule>>,
+    echo_canceller: Arc<Mutex<()>>,
     replays: replays::Replays,
     legacy_audio_compatible: bool,
 }
