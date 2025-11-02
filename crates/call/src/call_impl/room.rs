@@ -18,8 +18,6 @@ use gpui::{
 };
 use gpui_tokio::Tokio;
 use language::LanguageRegistry;
-use livekit::{LocalTrackPublication, ParticipantIdentity, RoomEvent};
-use livekit_client::{self as livekit, AudioStream, TrackSid};
 use postage::{sink::Sink, stream::Stream, watch};
 use project::Project;
 use settings::Settings as _;
@@ -41,7 +39,7 @@ pub enum Event {
         participant_id: proto::PeerId,
     },
     RemoteVideoTrackUnsubscribed {
-        sid: TrackSid,
+        sid: (),
     },
     RemoteAudioTracksChanged {
         participant_id: proto::PeerId,
@@ -102,11 +100,7 @@ impl Room {
     }
 
     pub fn is_connected(&self, _: &App) -> bool {
-        if let Some(live_kit) = self.live_kit.as_ref() {
-            live_kit.room.connection_state() == livekit::ConnectionState::Connected
-        } else {
-            false
-        }
+        false
     }
 
     fn new(
@@ -534,8 +528,8 @@ impl Room {
         let room = self.live_kit.as_ref().map(|lk| lk.room.clone());
         async move {
             let room = room?;
-            let sid = room.sid().await;
-            let name = room.name();
+            let sid = "";
+            let name = "";
             Some(format!("{} (sid: {sid})", name))
         }
     }
@@ -754,10 +748,7 @@ impl Room {
                     this.local_participant.projects.clear();
                 }
 
-                let livekit_participants = this
-                    .live_kit
-                    .as_ref()
-                    .map(|live_kit| live_kit.room.remote_participants());
+                let livekit_participants = this.live_kit.as_ref();
 
                 if let Some(participants) = remote_participants.log_err() {
                     for (participant, user) in room.participants.into_iter().zip(participants) {
@@ -855,27 +846,6 @@ impl Room {
                                     Audio::play_sound(Sound::Joined, cx);
                                 }
                             }
-
-                            if let Some(livekit_participants) = &livekit_participants
-                                && let Some(livekit_participant) = livekit_participants
-                                    .get(&ParticipantIdentity(user.id.to_string()))
-                            {
-                                for publication in
-                                    livekit_participant.track_publications().into_values()
-                                {
-                                    if let Some(track) = publication.track() {
-                                        this.livekit_room_updated(
-                                            RoomEvent::TrackSubscribed {
-                                                track,
-                                                publication,
-                                                participant: livekit_participant.clone(),
-                                            },
-                                            cx,
-                                        )
-                                        .warn_on_err();
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -947,154 +917,12 @@ impl Room {
         })
     }
 
-    fn livekit_room_updated(&mut self, event: RoomEvent, cx: &mut Context<Self>) -> Result<()> {
+    fn livekit_room_updated(&mut self, event: (), cx: &mut Context<Self>) -> Result<()> {
         log::trace!(
             "client {:?}. livekit event: {:?}",
             self.client.user_id(),
             &event
         );
-
-        match event {
-            RoomEvent::TrackSubscribed {
-                track,
-                participant,
-                publication,
-            } => {
-                let user_id = participant.identity().0.parse()?;
-                let track_id = track.sid();
-                let participant =
-                    self.remote_participants
-                        .get_mut(&user_id)
-                        .with_context(|| {
-                            format!(
-                                "{:?} subscribed to track by unknown participant {user_id}",
-                                self.client.user_id()
-                            )
-                        })?;
-                if self.live_kit.as_ref().is_none_or(|kit| kit.deafened) && publication.is_audio() {
-                    publication.set_enabled(false, cx);
-                }
-                match track {
-                    livekit_client::RemoteTrack::Audio(track) => {
-                        cx.emit(Event::RemoteAudioTracksChanged {
-                            participant_id: participant.peer_id,
-                        });
-                        if let Some(live_kit) = self.live_kit.as_ref() {
-                            let stream = live_kit.room.play_remote_audio_track(&track, cx)?;
-                            participant.audio_tracks.insert(track_id, (track, stream));
-                            participant.muted = publication.is_muted();
-                        }
-                    }
-                    livekit_client::RemoteTrack::Video(track) => {
-                        cx.emit(Event::RemoteVideoTracksChanged {
-                            participant_id: participant.peer_id,
-                        });
-                        participant.video_tracks.insert(track_id, track);
-                    }
-                }
-            }
-
-            RoomEvent::TrackUnsubscribed {
-                track, participant, ..
-            } => {
-                let user_id = participant.identity().0.parse()?;
-                let participant =
-                    self.remote_participants
-                        .get_mut(&user_id)
-                        .with_context(|| {
-                            format!(
-                                "{:?}, unsubscribed from track by unknown participant {user_id}",
-                                self.client.user_id()
-                            )
-                        })?;
-                match track {
-                    livekit_client::RemoteTrack::Audio(track) => {
-                        participant.audio_tracks.remove(&track.sid());
-                        participant.muted = true;
-                        cx.emit(Event::RemoteAudioTracksChanged {
-                            participant_id: participant.peer_id,
-                        });
-                    }
-                    livekit_client::RemoteTrack::Video(track) => {
-                        participant.video_tracks.remove(&track.sid());
-                        cx.emit(Event::RemoteVideoTracksChanged {
-                            participant_id: participant.peer_id,
-                        });
-                        cx.emit(Event::RemoteVideoTrackUnsubscribed { sid: track.sid() });
-                    }
-                }
-            }
-
-            RoomEvent::ActiveSpeakersChanged { speakers } => {
-                let mut speaker_ids = speakers
-                    .into_iter()
-                    .filter_map(|speaker| speaker.identity().0.parse().ok())
-                    .collect::<Vec<u64>>();
-                speaker_ids.sort_unstable();
-                for (sid, participant) in &mut self.remote_participants {
-                    participant.speaking = speaker_ids.binary_search(sid).is_ok();
-                }
-                if let Some(id) = self.client.user_id()
-                    && let Some(room) = &mut self.live_kit
-                {
-                    room.speaking = speaker_ids.binary_search(&id).is_ok();
-                }
-            }
-
-            RoomEvent::TrackMuted {
-                participant,
-                publication,
-            }
-            | RoomEvent::TrackUnmuted {
-                participant,
-                publication,
-            } => {
-                let mut found = false;
-                let user_id = participant.identity().0.parse()?;
-                let track_id = publication.sid();
-                if let Some(participant) = self.remote_participants.get_mut(&user_id) {
-                    for (track, _) in participant.audio_tracks.values() {
-                        if track.sid() == track_id {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        participant.muted = publication.is_muted();
-                    }
-                }
-            }
-
-            RoomEvent::LocalTrackUnpublished { publication, .. } => {
-                log::info!("unpublished track {}", publication.sid());
-                if let Some(room) = &mut self.live_kit {
-                    if let LocalTrack::Published {
-                        track_publication, ..
-                    } = &room.microphone_track
-                        && track_publication.sid() == publication.sid()
-                    {
-                        room.microphone_track = LocalTrack::None;
-                    }
-                    if let LocalTrack::Published {
-                        track_publication, ..
-                    } = &room.screen_track
-                        && track_publication.sid() == publication.sid()
-                    {
-                        room.screen_track = LocalTrack::None;
-                    }
-                }
-            }
-
-            RoomEvent::LocalTrackPublished { publication, .. } => {
-                log::info!("published track {:?}", publication.sid());
-            }
-
-            RoomEvent::Disconnected { reason } => {
-                log::info!("disconnected from room: {reason:?}");
-                self.leave(cx).detach_and_log_err(cx);
-            }
-            _ => {}
-        }
 
         cx.notify();
         Ok(())
@@ -1342,77 +1170,7 @@ impl Room {
 
     #[track_caller]
     pub fn share_microphone(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
-        if self.status.is_offline() {
-            return Task::ready(Err(anyhow!("room is offline")));
-        }
-
-        let (room, publish_id) = if let Some(live_kit) = self.live_kit.as_mut() {
-            let publish_id = post_inc(&mut live_kit.next_publish_id);
-            live_kit.microphone_track = LocalTrack::Pending { publish_id };
-            cx.notify();
-            (live_kit.room.clone(), publish_id)
-        } else {
-            return Task::ready(Err(anyhow!("live-kit was not initialized")));
-        };
-
-        let is_staff = cx.is_staff();
-        let user_name = self
-            .user_store
-            .read(cx)
-            .current_user()
-            .and_then(|user| user.name.clone())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        cx.spawn(async move |this, cx| {
-            let publication = room
-                .publish_local_microphone_track(user_name, is_staff, cx)
-                .await;
-            this.update(cx, |this, cx| {
-                let live_kit = this
-                    .live_kit
-                    .as_mut()
-                    .context("live-kit was not initialized")?;
-
-                let canceled = if let LocalTrack::Pending {
-                    publish_id: cur_publish_id,
-                } = &live_kit.microphone_track
-                {
-                    *cur_publish_id != publish_id
-                } else {
-                    true
-                };
-
-                match publication {
-                    Ok((publication, stream)) => {
-                        if canceled {
-                            cx.spawn(async move |_, cx| {
-                                room.unpublish_local_track(publication.sid(), cx).await
-                            })
-                            .detach_and_log_err(cx)
-                        } else {
-                            if live_kit.muted_by_user || live_kit.deafened {
-                                publication.mute(cx);
-                            }
-                            live_kit.microphone_track = LocalTrack::Published {
-                                track_publication: publication,
-                                _stream: Box::new(stream),
-                            };
-                            cx.notify();
-                        }
-                        Ok(())
-                    }
-                    Err(error) => {
-                        if canceled {
-                            Ok(())
-                        } else {
-                            live_kit.microphone_track = LocalTrack::None;
-                            cx.notify();
-                            Err(error)
-                        }
-                    }
-                }
-            })?
-        })
+        Task::ready(Ok(()))
     }
 
     pub fn share_screen(
@@ -1420,196 +1178,25 @@ impl Room {
         source: Rc<dyn ScreenCaptureSource>,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        if self.status.is_offline() {
-            return Task::ready(Err(anyhow!("room is offline")));
-        }
-        if self.is_sharing_screen() {
-            return Task::ready(Err(anyhow!("screen was already shared")));
-        }
-
-        let (participant, publish_id) = if let Some(live_kit) = self.live_kit.as_mut() {
-            let publish_id = post_inc(&mut live_kit.next_publish_id);
-            live_kit.screen_track = LocalTrack::Pending { publish_id };
-            cx.notify();
-            (live_kit.room.local_participant(), publish_id)
-        } else {
-            return Task::ready(Err(anyhow!("live-kit was not initialized")));
-        };
-
-        cx.spawn(async move |this, cx| {
-            let publication = participant.publish_screenshare_track(&*source, cx).await;
-
-            this.update(cx, |this, cx| {
-                let live_kit = this
-                    .live_kit
-                    .as_mut()
-                    .context("live-kit was not initialized")?;
-
-                let canceled = if let LocalTrack::Pending {
-                    publish_id: cur_publish_id,
-                } = &live_kit.screen_track
-                {
-                    *cur_publish_id != publish_id
-                } else {
-                    true
-                };
-
-                match publication {
-                    Ok((publication, stream)) => {
-                        if canceled {
-                            cx.spawn(async move |_, cx| {
-                                participant.unpublish_track(publication.sid(), cx).await
-                            })
-                            .detach()
-                        } else {
-                            live_kit.screen_track = LocalTrack::Published {
-                                track_publication: publication,
-                                _stream: stream,
-                            };
-                            cx.notify();
-                        }
-
-                        Audio::play_sound(Sound::StartScreenshare, cx);
-                        Ok(())
-                    }
-                    Err(error) => {
-                        if canceled {
-                            Ok(())
-                        } else {
-                            live_kit.screen_track = LocalTrack::None;
-                            cx.notify();
-                            Err(error)
-                        }
-                    }
-                }
-            })?
-        })
+        Task::ready(Ok(()))
     }
 
-    pub fn toggle_mute(&mut self, cx: &mut Context<Self>) {
-        if let Some(live_kit) = self.live_kit.as_mut() {
-            // When unmuting, undeafen if the user was deafened before.
-            let was_deafened = live_kit.deafened;
-            if live_kit.muted_by_user
-                || live_kit.deafened
-                || matches!(live_kit.microphone_track, LocalTrack::None)
-            {
-                live_kit.muted_by_user = false;
-                live_kit.deafened = false;
-            } else {
-                live_kit.muted_by_user = true;
-            }
-            let muted = live_kit.muted_by_user;
-            let should_undeafen = was_deafened && !live_kit.deafened;
+    pub fn toggle_mute(&mut self, cx: &mut Context<Self>) {}
 
-            if let Some(task) = self.set_mute(muted, cx) {
-                task.detach_and_log_err(cx);
-            }
-
-            if should_undeafen {
-                self.set_deafened(false, cx);
-            }
-        }
-    }
-
-    pub fn toggle_deafen(&mut self, cx: &mut Context<Self>) {
-        if let Some(live_kit) = self.live_kit.as_mut() {
-            // When deafening, mute the microphone if it was not already muted.
-            // When un-deafening, unmute the microphone, unless it was explicitly muted.
-            let deafened = !live_kit.deafened;
-            live_kit.deafened = deafened;
-            let should_change_mute = !live_kit.muted_by_user;
-
-            self.set_deafened(deafened, cx);
-
-            if should_change_mute && let Some(task) = self.set_mute(deafened, cx) {
-                task.detach_and_log_err(cx);
-            }
-        }
-    }
+    pub fn toggle_deafen(&mut self, cx: &mut Context<Self>) {}
 
     pub fn unshare_screen(&mut self, play_sound: bool, cx: &mut Context<Self>) -> Result<()> {
-        anyhow::ensure!(!self.status.is_offline(), "room is offline");
-
-        let live_kit = self
-            .live_kit
-            .as_mut()
-            .context("live-kit was not initialized")?;
-        match mem::take(&mut live_kit.screen_track) {
-            LocalTrack::None => anyhow::bail!("screen was not shared"),
-            LocalTrack::Pending { .. } => {
-                cx.notify();
-                Ok(())
-            }
-            LocalTrack::Published {
-                track_publication, ..
-            } => {
-                {
-                    let local_participant = live_kit.room.local_participant();
-                    let sid = track_publication.sid();
-                    cx.spawn(async move |_, cx| local_participant.unpublish_track(sid, cx).await)
-                        .detach_and_log_err(cx);
-                    cx.notify();
-                }
-
-                if play_sound {
-                    Audio::play_sound(Sound::StopScreenshare, cx);
-                }
-
-                Ok(())
-            }
-        }
+        Ok(())
     }
 
     fn set_deafened(&mut self, deafened: bool, cx: &mut Context<Self>) -> Option<()> {
-        {
-            let live_kit = self.live_kit.as_mut()?;
-            cx.notify();
-            for (_, participant) in live_kit.room.remote_participants() {
-                for (_, publication) in participant.track_publications() {
-                    if publication.is_audio() {
-                        publication.set_enabled(!deafened, cx);
-                    }
-                }
-            }
-        }
-
         None
     }
 
     fn set_mute(&mut self, should_mute: bool, cx: &mut Context<Room>) -> Option<Task<Result<()>>> {
-        let live_kit = self.live_kit.as_mut()?;
         cx.notify();
 
-        if should_mute {
-            Audio::play_sound(Sound::Mute, cx);
-        } else {
-            Audio::play_sound(Sound::Unmute, cx);
-        }
-
-        match &mut live_kit.microphone_track {
-            LocalTrack::None => {
-                if should_mute {
-                    None
-                } else {
-                    Some(self.share_microphone(cx))
-                }
-            }
-            LocalTrack::Pending { .. } => None,
-            LocalTrack::Published {
-                track_publication, ..
-            } => {
-                let guard = Tokio::handle(cx);
-                if should_mute {
-                    track_publication.mute(cx)
-                } else {
-                    track_publication.unmute(cx)
-                }
-                drop(guard);
-
-                None
-            }
-        }
+        None
     }
 }
 
@@ -1617,54 +1204,12 @@ fn spawn_room_connection(
     livekit_connection_info: Option<proto::LiveKitConnectionInfo>,
     cx: &mut Context<Room>,
 ) {
-    if let Some(connection_info) = livekit_connection_info {
-        cx.spawn(async move |this, cx| {
-            let (room, mut events) =
-                livekit::Room::connect(connection_info.server_url, connection_info.token, cx)
-                    .await?;
-
-            this.update(cx, |this, cx| {
-                let _handle_updates = cx.spawn(async move |this, cx| {
-                    while let Some(event) = events.next().await {
-                        if this
-                            .update(cx, |this, cx| {
-                                this.livekit_room_updated(event, cx).warn_on_err();
-                            })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                });
-
-                let muted_by_user = Room::mute_on_join(cx);
-                this.live_kit = Some(LiveKitRoom {
-                    room: Rc::new(room),
-                    screen_track: LocalTrack::None,
-                    microphone_track: LocalTrack::None,
-                    next_publish_id: 0,
-                    muted_by_user,
-                    deafened: false,
-                    speaking: false,
-                    _handle_updates,
-                });
-
-                if !muted_by_user && this.can_use_microphone() {
-                    this.share_microphone(cx)
-                } else {
-                    Task::ready(Ok(()))
-                }
-            })?
-            .await
-        })
-        .detach_and_log_err(cx);
-    }
 }
 
 struct LiveKitRoom {
-    room: Rc<livekit::Room>,
+    room: Rc<()>,
     screen_track: LocalTrack<dyn ScreenCaptureStream>,
-    microphone_track: LocalTrack<AudioStream>,
+    microphone_track: LocalTrack<()>,
     /// Tracks whether we're currently in a muted state due to auto-mute from deafening or manual mute performed by user.
     muted_by_user: bool,
     deafened: bool,
@@ -1674,32 +1219,7 @@ struct LiveKitRoom {
 }
 
 impl LiveKitRoom {
-    fn stop_publishing(&mut self, cx: &mut Context<Room>) {
-        let mut tracks_to_unpublish = Vec::new();
-        if let LocalTrack::Published {
-            track_publication, ..
-        } = mem::replace(&mut self.microphone_track, LocalTrack::None)
-        {
-            tracks_to_unpublish.push(track_publication.sid());
-            cx.notify();
-        }
-
-        if let LocalTrack::Published {
-            track_publication, ..
-        } = mem::replace(&mut self.screen_track, LocalTrack::None)
-        {
-            tracks_to_unpublish.push(track_publication.sid());
-            cx.notify();
-        }
-
-        let participant = self.room.local_participant();
-        cx.spawn(async move |_, cx| {
-            for sid in tracks_to_unpublish {
-                participant.unpublish_track(sid, cx).await.log_err();
-            }
-        })
-        .detach();
-    }
+    fn stop_publishing(&mut self, cx: &mut Context<Room>) {}
 }
 
 #[derive(Default)]
@@ -1710,7 +1230,7 @@ enum LocalTrack<Stream: ?Sized> {
         publish_id: usize,
     },
     Published {
-        track_publication: LocalTrackPublication,
+        track_publication: (),
         _stream: Box<Stream>,
     },
 }

@@ -56,7 +56,6 @@ impl Render for SharedScreen {
             .track_focus(&self.focus)
             .key_context("SharedScreen")
             .size_full()
-            .child(self.view.clone())
     }
 }
 

@@ -43,7 +43,6 @@ futures.workspace = true
 gpui.workspace = true
 hex.workspace = true
 http_client.workspace = true
-livekit_api.workspace = true
 log.workspace = true
 nanoid.workspace = true
 parking_lot.workspace = true
@@ -109,7 +108,6 @@ hyper.workspace = true
 indoc.workspace = true
 language = { workspace = true, features = ["test-support"] }
 language_model = { workspace = true, features = ["test-support"] }
-livekit_client =  { workspace = true, features = ["test-support"] }
 lsp = { workspace = true, features = ["test-support"] }
 menu.workspace = true
 multi_buffer = { workspace = true, features = ["test-support"] }
