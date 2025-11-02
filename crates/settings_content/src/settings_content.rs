@@ -1216,7 +1216,7 @@ impl From<SaturatingBool> for bool {
 
 impl merge_from::MergeFrom for SaturatingBool {
     fn merge_from(&mut self, other: &Self) {
-        self.0 |= other.0
+        self.0 |= other.0;
     }
 }
 

@@ -1067,7 +1067,7 @@ pub enum PulledDiagnostics {
 
 /// Whether to disable all AI features in Zed.
 ///
-/// Default: false
+/// Default: true
 #[derive(Copy, Clone, Debug, RegisterSetting)]
 pub struct DisableAiSettings {
     pub disable_ai: bool,

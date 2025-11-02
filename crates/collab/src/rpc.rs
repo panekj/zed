@@ -585,12 +585,6 @@ impl Server {
                                 }
                             }
                         }
-
-                        if let Some(live_kit) = livekit_client.as_ref()
-                            && delete_livekit_room
-                        {
-                            live_kit.delete_room(livekit_room).await.trace_err();
-                        }
                     }
                 }
 
@@ -1269,20 +1263,7 @@ async fn create_room(
 ) -> Result<()> {
     let livekit_room = nanoid::nanoid!(30);
 
-    let live_kit_connection_info = util::maybe!(async {
-        let live_kit = session.app_state.livekit_client.as_ref();
-        let live_kit = live_kit?;
-        let user_id = session.user_id().to_string();
-
-        let token = live_kit.room_token(&livekit_room, &user_id).trace_err()?;
-
-        Some(proto::LiveKitConnectionInfo {
-            server_url: live_kit.url().into(),
-            token,
-            can_publish: true,
-        })
-    })
-    .await;
+    let live_kit_connection_info = None;
 
     let room = session
         .db()
@@ -1339,22 +1320,7 @@ async fn join_room(
             .trace_err();
     }
 
-    let live_kit_connection_info = if let Some(live_kit) = session.app_state.livekit_client.as_ref()
-    {
-        live_kit
-            .room_token(
-                &joined_room.room.livekit_room,
-                &session.user_id().to_string(),
-            )
-            .trace_err()
-            .map(|token| proto::LiveKitConnectionInfo {
-                server_url: live_kit.url().into(),
-                token,
-                can_publish: true,
-            })
-    } else {
-        None
-    };
+    let live_kit_connection_info = None;
 
     response.send(proto::JoinRoomResponse {
         room: Some(joined_room.room),
@@ -1581,23 +1547,6 @@ async fn set_room_participant_role(
         room_updated(&room, &session.peer);
         (livekit_room, can_publish)
     };
-
-    if let Some(live_kit) = session.app_state.livekit_client.as_ref() {
-        live_kit
-            .update_participant(
-                livekit_room.clone(),
-                request.user_id.to_string(),
-                livekit_api::proto::ParticipantPermission {
-                    can_subscribe: true,
-                    can_publish,
-                    can_publish_data: can_publish,
-                    hidden: false,
-                    recorder: false,
-                },
-            )
-            .await
-            .trace_err();
-    }
 
     response.send(proto::Ack {})?;
     Ok(())
@@ -3254,40 +3203,7 @@ async fn join_channel_internal(
             .join_channel(channel_id, session.user_id(), session.connection_id)
             .await?;
 
-        let live_kit_connection_info =
-            session
-                .app_state
-                .livekit_client
-                .as_ref()
-                .and_then(|live_kit| {
-                    let (can_publish, token) = if role == ChannelRole::Guest {
-                        (
-                            false,
-                            live_kit
-                                .guest_token(
-                                    &joined_room.room.livekit_room,
-                                    &session.user_id().to_string(),
-                                )
-                                .trace_err()?,
-                        )
-                    } else {
-                        (
-                            true,
-                            live_kit
-                                .room_token(
-                                    &joined_room.room.livekit_room,
-                                    &session.user_id().to_string(),
-                                )
-                                .trace_err()?,
-                        )
-                    };
-
-                    Some(LiveKitConnectionInfo {
-                        server_url: live_kit.url().into(),
-                        token,
-                        can_publish,
-                    })
-                });
+        let live_kit_connection_info = None;
 
         response.send(proto::JoinRoomResponse {
             room: Some(joined_room.room.clone()),
@@ -3934,17 +3850,6 @@ async fn leave_room_for_session(session: &Session, connection_id: ConnectionId) 
 
     for contact_user_id in contacts_to_update {
         update_user_contacts(contact_user_id, session).await?;
-    }
-
-    if let Some(live_kit) = session.app_state.livekit_client.as_ref() {
-        live_kit
-            .remove_participant(livekit_room.clone(), session.user_id().to_string())
-            .await
-            .trace_err();
-
-        if delete_livekit_room {
-            live_kit.delete_room(livekit_room).await.trace_err();
-        }
     }
 
     Ok(())

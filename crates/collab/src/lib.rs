@@ -211,7 +211,7 @@ impl ServiceMode {
 pub struct AppState {
     pub db: Arc<Database>,
     pub http_client: Option<reqwest::Client>,
-    pub livekit_client: Option<Arc<dyn livekit_api::Client>>,
+    pub livekit_client: Option<Arc<()>>,
     pub blob_store_client: Option<aws_sdk_s3::Client>,
     pub executor: Executor,
     pub kinesis_client: Option<::aws_sdk_kinesis::Client>,
@@ -231,11 +231,7 @@ impl AppState {
             .zip(config.livekit_key.as_ref())
             .zip(config.livekit_secret.as_ref())
         {
-            Some(Arc::new(livekit_api::LiveKitClient::new(
-                server.clone(),
-                key.clone(),
-                secret.clone(),
-            )) as Arc<dyn livekit_api::Client>)
+            Some(Arc::new(()))
         } else {
             None
         };
