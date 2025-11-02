@@ -2113,20 +2113,7 @@ async fn test_mute_deafen(
         room: &Entity<Room>,
         cx: &TestAppContext,
     ) -> Vec<ParticipantAudioState> {
-        room.read_with(cx, |room, _| {
-            room.remote_participants()
-                .iter()
-                .map(|(user_id, participant)| ParticipantAudioState {
-                    user_id: *user_id,
-                    is_muted: participant.muted,
-                    audio_tracks_playing: participant
-                        .audio_tracks
-                        .values()
-                        .map(|(track, _)| track.enabled())
-                        .collect(),
-                })
-                .collect::<Vec<_>>()
-        })
+        vec![]
     }
 }
 

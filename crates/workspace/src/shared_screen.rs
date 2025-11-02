@@ -2,7 +2,7 @@ use crate::{
     ItemNavHistory, WorkspaceId,
     item::{Item, ItemEvent},
 };
-use call::{RemoteVideoTrack, RemoteVideoTrackView, Room};
+use call::Room;
 use client::{User, proto::PeerId};
 use gpui::{
     AppContext as _, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
@@ -19,39 +19,26 @@ pub struct SharedScreen {
     pub peer_id: PeerId,
     user: Arc<User>,
     nav_history: Option<ItemNavHistory>,
-    view: Entity<RemoteVideoTrackView>,
+    view: Entity<()>,
     focus: FocusHandle,
 }
 
 impl SharedScreen {
     pub fn new(
-        track: RemoteVideoTrack,
+        track: (),
         peer_id: PeerId,
         user: Arc<User>,
         room: Entity<Room>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let my_sid = track.sid();
-        cx.subscribe(&room, move |_, _, ev, cx| {
-            if let call::room::Event::RemoteVideoTrackUnsubscribed { sid } = ev
-                && sid == &my_sid
-            {
-                cx.emit(Event::Close)
-            }
-        })
-        .detach();
+        let view = cx.new(|cx| ());
 
         cx.observe_release(&room, |_, _, cx| {
             cx.emit(Event::Close);
         })
         .detach();
 
-        let view = cx.new(|cx| RemoteVideoTrackView::new(track.clone(), window, cx));
-        cx.subscribe(&view, |_, _, ev, cx| match ev {
-            call::RemoteVideoTrackViewEvent::Close => cx.emit(Event::Close),
-        })
-        .detach();
         Self {
             view,
             peer_id,
@@ -76,7 +63,6 @@ impl Render for SharedScreen {
             .track_focus(&self.focus)
             .key_context("SharedScreen")
             .size_full()
-            .child(self.view.clone())
     }
 }
 
@@ -125,7 +111,7 @@ impl Item for SharedScreen {
         cx: &mut Context<Self>,
     ) -> Task<Option<Entity<Self>>> {
         Task::ready(Some(cx.new(|cx| Self {
-            view: self.view.update(cx, |view, cx| view.clone(window, cx)),
+            view: self.view.clone(),
             peer_id: self.peer_id,
             user: self.user.clone(),
             nav_history: Default::default(),
