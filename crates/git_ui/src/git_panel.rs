@@ -3349,51 +3349,8 @@ impl GitPanel {
         }
     }
 
-    #[cfg(not(feature = "call"))]
     fn potential_co_authors(&self, _cx: &App) -> Vec<(String, String)> {
-        Vec::new()
-    }
-
-    #[cfg(feature = "call")]
-    fn potential_co_authors(&self, cx: &App) -> Vec<(String, String)> {
-        let mut new_co_authors = Vec::new();
-        let project = self.project.read(cx);
-
-        let Some(room) =
-            call::ActiveCall::try_global(cx).and_then(|call| call.read(cx).room().cloned())
-        else {
-            return Vec::default();
-        };
-
-        let room = room.read(cx);
-
-        for (peer_id, collaborator) in project.collaborators() {
-            if collaborator.is_host {
-                continue;
-            }
-
-            let Some(participant) = room.remote_participant_for_peer_id(*peer_id) else {
-                continue;
-            };
-            if !participant.can_write() {
-                continue;
-            }
-            if let Some(email) = &collaborator.committer_email {
-                let name = collaborator
-                    .committer_name
-                    .clone()
-                    .or_else(|| participant.user.name.clone())
-                    .unwrap_or_else(|| participant.user.github_login.clone().to_string());
-                new_co_authors.push((name.clone(), email.clone()))
-            }
-        }
-        if !project.is_local()
-            && !project.is_read_only(cx)
-            && let Some(local_committer) = self.local_committer(room, cx)
-        {
-            new_co_authors.push(local_committer);
-        }
-        new_co_authors
+        Vec::default()
     }
 
     #[cfg(feature = "call")]
@@ -3413,10 +3370,8 @@ impl GitPanel {
         &mut self,
         _: &ToggleFillCoAuthors,
         _: &mut Window,
-        cx: &mut Context<Self>,
+        _: &mut Context<Self>,
     ) {
-        self.add_coauthors = !self.add_coauthors;
-        cx.notify();
     }
 
     fn toggle_sort_by_path(
@@ -6647,21 +6602,6 @@ impl Render for GitPanel {
         let has_entries = !self.entries.is_empty();
         let has_write_access = self.has_write_access(cx);
 
-        #[cfg(feature = "call")]
-        let has_co_authors = self
-            .workspace
-            .upgrade()
-            .and_then(|_workspace| {
-                call::ActiveCall::try_global(cx).and_then(|call| call.read(cx).room().cloned())
-            })
-            .is_some_and(|room| {
-                self.load_local_committer(cx);
-                let room = room.read(cx);
-                room.remote_participants()
-                    .values()
-                    .any(|remote_participant| remote_participant.can_write())
-            });
-        #[cfg(not(feature = "call"))]
         let has_co_authors = false;
 
         v_flex()
@@ -6751,15 +6691,6 @@ impl Render for GitPanel {
                     })
                     .into_any_element(),
             )
-            .children(self.context_menu.as_ref().map(|(menu, position, _)| {
-                deferred(
-                    anchored()
-                        .position(*position)
-                        .anchor(Anchor::TopLeft)
-                        .child(menu.clone()),
-                )
-                .with_priority(1)
-            }))
     }
 }
 

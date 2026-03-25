@@ -808,12 +808,7 @@ impl SshRemoteConnection {
 
         let binary_exists_on_server = self
             .socket
-            .run_command(
-                self.ssh_shell_kind,
-                &dst_path.display(self.path_style()),
-                &["version"],
-                true,
-            )
+            .run_command(self.ssh_shell_kind, "zed-remote-server", &["version"], true)
             .await
             .is_ok();
 

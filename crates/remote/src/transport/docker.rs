@@ -202,7 +202,7 @@ impl DockerExecConnection {
 
         let binary_exists_on_server = self
             .run_docker_exec(
-                &dst_path.display(self.path_style()),
+                "zed-remote-server",
                 Some(&remote_dir_for_server),
                 &Default::default(),
                 &["version"],

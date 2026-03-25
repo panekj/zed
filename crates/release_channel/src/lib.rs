@@ -11,11 +11,14 @@ const ZED_DOCS_URL: &str = "https://zed.dev/docs";
 
 /// stable | dev | nightly | preview
 pub static RELEASE_CHANNEL_NAME: LazyLock<String> = LazyLock::new(|| {
+    let release_channel: &str = option_env!("ZED_RELEASE_CHANNEL")
+        .unwrap_or(include_str!("../../zed/RELEASE_CHANNEL"))
+        .trim();
+
     if cfg!(debug_assertions) {
-        env::var("ZED_RELEASE_CHANNEL")
-            .unwrap_or_else(|_| include_str!("../../zed/RELEASE_CHANNEL").trim().to_string())
+        env::var("ZED_RELEASE_CHANNEL").unwrap_or(release_channel.to_string())
     } else {
-        include_str!("../../zed/RELEASE_CHANNEL").trim().to_string()
+        release_channel.to_string()
     }
 });
 
@@ -185,7 +188,7 @@ impl ReleaseChannel {
 
     /// Returns whether we want to poll for updates for this [`ReleaseChannel`]
     pub fn poll_for_updates(&self) -> bool {
-        !matches!(self, ReleaseChannel::Dev)
+        false
     }
 
     /// Returns the display name for this [`ReleaseChannel`].

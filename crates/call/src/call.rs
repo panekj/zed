@@ -1,5 +1,6 @@
-pub mod call_settings;
+use std::sync::Arc;
 
-mod call_impl;
+use client::{Client, UserStore};
+use gpui::{App, Entity};
 
-pub use call_impl::*;
+pub fn init(_client: Arc<Client>, _user_store: Entity<UserStore>, _cx: &mut App) {}

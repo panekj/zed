@@ -17,7 +17,6 @@ test-support = [
     "client/test-support",
     "collections/test-support",
     "gpui/test-support",
-    "livekit_client/test-support",
     "project/test-support",
     "util/test-support",
     "workspace/test-support"
@@ -34,7 +33,6 @@ feature_flags.workspace = true
 gpui = { workspace = true, features = ["screen-capture"] }
 gpui_tokio.workspace = true
 language.workspace = true
-livekit_client.workspace = true
 log.workspace = true
 postage.workspace = true
 project.workspace = true
@@ -53,5 +51,3 @@ language = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 util = { workspace = true, features = ["test-support"] }
 workspace = { workspace = true, features = ["test-support"] }
-
-livekit_client = { workspace = true, features = ["test-support"] }
