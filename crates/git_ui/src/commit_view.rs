@@ -3,7 +3,6 @@ use buffer_diff::BufferDiff;
 use collections::HashMap;
 use editor::display_map::{BlockPlacement, BlockProperties, BlockStyle};
 use editor::{Addon, Editor, EditorEvent, ExcerptRange, MultiBuffer, multibuffer_context_lines};
-use feature_flags::{FeatureFlagAppExt as _, GitGraphFeatureFlag};
 use git::repository::{CommitDetails, CommitDiff, RepoPath, is_binary_content};
 use git::status::{FileStatus, StatusCode, TrackedStatus};
 use git::{
@@ -1073,7 +1072,7 @@ impl Render for CommitViewToolbar {
                     }),
             )
             .when(!is_stash, |this| {
-                this.when(cx.has_flag::<GitGraphFeatureFlag>(), |this| {
+                this.when(true, |this| {
                     this.child(
                         IconButton::new("show-in-git-graph", IconName::GitGraph)
                             .icon_size(IconSize::Small)

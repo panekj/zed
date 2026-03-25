@@ -657,8 +657,7 @@ impl SshRemoteConnection {
                 ""
             }
         );
-        let dst_path =
-            paths::remote_server_dir_relative().join(RelPath::unix(&binary_name).unwrap());
+        let dst_path = RelPath::unix("zed-remote-server").unwrap().into_arc();
 
         let binary_exists_on_server = self
             .socket

@@ -13,8 +13,6 @@ use settings::Settings;
 use std::io::Cursor;
 use util::ResultExt;
 
-mod echo_canceller;
-use echo_canceller::EchoCanceller;
 mod rodio_ext;
 pub use crate::audio_settings::AudioSettings;
 pub use rodio_ext::RodioExt;
@@ -51,7 +49,6 @@ pub fn ensure_devices_initialized(cx: &mut App) {
 #[derive(Default)]
 pub struct Audio {
     output: Option<(MixerDeviceSink, Mixer)>,
-    pub echo_canceller: EchoCanceller,
     source_cache: HashMap<Sound, Buffered<Decoder<Cursor<Vec<u8>>>>>,
 }
 
@@ -65,8 +62,7 @@ impl Audio {
         );
 
         if self.output.is_none() {
-            let (output_handle, output_mixer) =
-                open_output_stream(output_audio_device, self.echo_canceller.clone())?;
+            let (output_handle, output_mixer) = open_output_stream(output_audio_device)?;
             self.output = Some((output_handle, output_mixer));
         }
 
@@ -178,10 +174,7 @@ pub fn open_test_output(device_id: Option<DeviceId>) -> anyhow::Result<MixerDevi
         .context("Could not open output stream")
 }
 
-pub fn open_output_stream(
-    device_id: Option<DeviceId>,
-    mut echo_canceller: EchoCanceller,
-) -> anyhow::Result<(MixerDeviceSink, Mixer)> {
+pub fn open_output_stream(device_id: Option<DeviceId>) -> anyhow::Result<(MixerDeviceSink, Mixer)> {
     let device = resolve_device(device_id.as_ref(), false)?;
     let mut output_handle = DeviceSinkBuilder::from_device(device)?
         .open_stream()
@@ -192,12 +185,6 @@ pub fn open_output_stream(
     let (output_mixer, source) = rodio::mixer::mixer(CHANNEL_COUNT, SAMPLE_RATE);
     // otherwise the mixer ends as it's empty
     output_mixer.add(rodio::source::Zero::new(CHANNEL_COUNT, SAMPLE_RATE));
-    let echo_cancelling_source = source // apply echo cancellation just before output
-        .inspect_buffer::<BUFFER_SIZE, _>(move |buffer| {
-            let mut buf: [i16; _] = buffer.map(|s| s.to_sample());
-            echo_canceller.process_reverse_stream(&mut buf)
-        });
-    output_handle.mixer().add(echo_cancelling_source);
 
     Ok((output_handle, output_mixer))
 }

@@ -16,7 +16,6 @@ doctest = false
 default = []
 stories = ["dep:story"]
 test-support = [
-    "call/test-support",
     "client/test-support",
 
     "gpui/test-support",
@@ -32,8 +31,6 @@ test-support = [
 anyhow.workspace = true
 auto_update.workspace = true
 platform_title_bar.workspace = true
-call.workspace = true
-channel.workspace = true
 chrono.workspace = true
 client.workspace = true
 cloud_api_types.workspace = true
@@ -41,7 +38,6 @@ db.workspace = true
 git_ui.workspace = true
 gpui = { workspace = true, features = ["screen-capture"] }
 icons.workspace = true
-livekit_client.workspace = true
 notifications.workspace = true
 project.workspace = true
 recent_projects.workspace = true
@@ -65,7 +61,6 @@ zed_actions.workspace = true
 windows.workspace = true
 
 [dev-dependencies]
-call = { workspace = true, features = ["test-support"] }
 client = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 notifications = { workspace = true, features = ["test-support"] }
