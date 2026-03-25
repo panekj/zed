@@ -347,7 +347,7 @@ impl RemoteConnection for WslRemoteConnection {
     ) -> Task<Result<i32>> {
         delegate.set_status(Some("Starting proxy"), cx);
 
-        let Some(remote_binary_path) = &self.remote_binary_path else {
+        let Some(_remote_binary_path) = &self.remote_binary_path else {
             return Task::ready(Err(anyhow!("Remote binary path not set")));
         };
 
@@ -361,7 +361,7 @@ impl RemoteConnection for WslRemoteConnection {
             }
         }
 
-        proxy_args.push(remote_binary_path.display(PathStyle::Posix).into_owned());
+        proxy_args.push("zed-remote-server".to_string());
         proxy_args.push("proxy".to_owned());
         proxy_args.push("--identifier".to_owned());
         proxy_args.push(unique_identifier);

@@ -21,7 +21,6 @@ use anyhow::{Context as _, Result};
 use clap::Parser;
 use cli::FORCE_CLI_MODE_ENV_VAR_NAME;
 use client::{Client, ProxySettings, RefreshLlmTokenListener, UserStore, parse_zed_link};
-use collab_ui::channel_view::ChannelView;
 use collections::HashMap;
 use crashes::InitCrashHandler;
 use db::kvp::{GlobalKeyValueStore, KeyValueStore};
@@ -67,7 +66,7 @@ use std::{
 };
 use theme::{ActiveTheme, GlobalTheme, ThemeRegistry};
 use theme_settings::load_user_theme;
-use util::{ResultExt, TryFutureExt, maybe};
+use util::ResultExt;
 use uuid::Uuid;
 use workspace::{
     AppState, MultiWorkspace, SerializedWorkspaceLocation, SessionWorkspace, Toast,
@@ -536,7 +535,7 @@ fn main() {
             let options = NodeBinaryOptions {
                 allow_path_lookup: !settings.ignore_system_version,
                 // TODO: Expose this setting
-                allow_binary_download: true,
+                allow_binary_download: false,
                 use_paths: settings.path.as_ref().map(|node_path| {
                     let node_path = PathBuf::from(shellexpand::tilde(node_path).as_ref());
                     let npm_path = settings
@@ -766,9 +765,7 @@ fn main() {
         theme_selector::init(cx);
         settings_profile_selector::init(cx);
         language_tools::init(cx);
-        call::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
-        collab_ui::init(&app_state, cx);
+        title_bar::init(cx);
         git_ui::init(cx);
         git_graph::init(cx);
         feedback::init(cx);
@@ -1326,58 +1323,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
         }));
     }
 
-    if !request.open_channel_notes.is_empty() || request.join_channel.is_some() {
-        cx.spawn(async move |cx| {
-            let result = maybe!(async {
-                if let Some(task) = task {
-                    task.await?;
-                }
-                let client = app_state.client.clone();
-                // we continue even if authentication fails as join_channel/ open channel notes will
-                // show a visible error message.
-                authenticate(client, cx).await.log_err();
-
-                if let Some(channel_id) = request.join_channel {
-                    cx.update(|cx| {
-                        workspace::join_channel(
-                            client::ChannelId(channel_id),
-                            app_state.clone(),
-                            None,
-                            None,
-                            cx,
-                        )
-                    })
-                    .await?;
-                }
-
-                let workspace_window =
-                    workspace::get_any_active_multi_workspace(app_state, cx.clone()).await?;
-
-                let workspace = workspace_window.read_with(cx, |mw, _| mw.workspace().clone())?;
-
-                let mut promises = Vec::new();
-                for (channel_id, heading) in request.open_channel_notes {
-                    promises.push(cx.update_window(workspace_window.into(), |_, window, cx| {
-                        ChannelView::open(
-                            client::ChannelId(channel_id),
-                            heading,
-                            workspace.clone(),
-                            window,
-                            cx,
-                        )
-                        .log_err()
-                    })?)
-                }
-                future::join_all(promises).await;
-                anyhow::Ok(())
-            })
-            .await;
-            if let Err(err) = result {
-                fail_to_open_window_async(err, cx);
-            }
-        })
-        .detach()
-    } else if let Some(task) = task {
+    if let Some(task) = task {
         cx.spawn(async move |cx| {
             if let Err(err) = task.await {
                 fail_to_open_window_async(err, cx);

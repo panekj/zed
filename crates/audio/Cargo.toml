@@ -26,6 +26,3 @@ serde.workspace = true
 settings.workspace = true
 thiserror.workspace = true
 util.workspace = true
-
-[target.'cfg(not(any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")))'.dependencies]
-libwebrtc.workspace = true

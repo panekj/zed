@@ -1,4 +1,3 @@
-use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
@@ -42,7 +41,6 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::separator(),
         MenuItem::action("Project Panel", zed_actions::project_panel::ToggleFocus),
         MenuItem::action("Outline Panel", outline_panel::ToggleFocus),
-        MenuItem::action("Collab Panel", collab_panel::ToggleFocus),
         MenuItem::action("Terminal Panel", terminal_panel::ToggleFocus),
         MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
         MenuItem::separator(),
@@ -64,7 +62,6 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
             disabled: false,
             items: vec![
                 MenuItem::action("About Zed", zed_actions::About),
-                MenuItem::action("Check for Updates", auto_update::Check),
                 MenuItem::separator(),
                 MenuItem::submenu(Menu::new("Settings").items([
                     MenuItem::action("Open Settings", zed_actions::OpenSettings),
