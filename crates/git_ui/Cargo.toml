@@ -21,7 +21,6 @@ alacritty_terminal.workspace = true
 anyhow.workspace = true
 askpass.workspace = true
 buffer_diff.workspace = true
-call.workspace = true
 collections.workspace = true
 component.workspace = true
 db.workspace = true

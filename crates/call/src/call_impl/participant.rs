@@ -1,12 +1,8 @@
 use client::{ParticipantIndex, User, proto};
 use collections::HashMap;
 use gpui::WeakEntity;
-use livekit_client::AudioStream;
 use project::Project;
 use std::sync::Arc;
-
-pub use livekit_client::TrackSid;
-pub use livekit_client::{RemoteAudioTrack, RemoteVideoTrack};
 
 #[derive(Clone, Default)]
 pub struct LocalParticipant {
@@ -33,8 +29,8 @@ pub struct RemoteParticipant {
     pub participant_index: ParticipantIndex,
     pub muted: bool,
     pub speaking: bool,
-    pub video_tracks: HashMap<TrackSid, RemoteVideoTrack>,
-    pub audio_tracks: HashMap<TrackSid, (RemoteAudioTrack, AudioStream)>,
+    pub video_tracks: HashMap<(), ()>,
+    pub audio_tracks: HashMap<(), ((), ())>,
 }
 
 impl RemoteParticipant {
