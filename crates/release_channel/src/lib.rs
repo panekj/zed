@@ -30,7 +30,10 @@ fn compile_time_release_channel_name() -> String {
 
 #[cfg(not(__do_not_set_zed_release_channel))]
 fn compile_time_release_channel_name() -> String {
-    include_str!("../../zed/RELEASE_CHANNEL").trim().to_string()
+    option_env!("ZED_RELEASE_CHANNEL")
+        .unwrap_or(include_str!("../../zed/RELEASE_CHANNEL"))
+        .trim()
+        .to_owned()
 }
 
 #[doc(hidden)]
@@ -199,7 +202,7 @@ impl ReleaseChannel {
 
     /// Returns whether we want to poll for updates for this [`ReleaseChannel`]
     pub fn poll_for_updates(&self) -> bool {
-        !matches!(self, ReleaseChannel::Dev)
+        false
     }
 
     /// Returns the display name for this [`ReleaseChannel`].

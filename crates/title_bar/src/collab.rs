@@ -1,8 +1,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use call::{ActiveCall, Room};
-use channel::ChannelStore;
 use client::{User, proto::PeerId};
 use gpui::{
     AnyElement, Empty, Hsla, IntoElement, MouseButton, Path, ScreenCaptureSource, Styled, TaskExt,
@@ -10,7 +8,6 @@ use gpui::{
 };
 use gpui::{App, Task, Window};
 use icons::IconName;
-use livekit_client::ConnectionQuality;
 use project::WorktreeSettings;
 use remote_connection::RemoteConnectionModal;
 use rpc::proto::{self};
@@ -39,82 +36,11 @@ pub fn toggle_screen_sharing(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let call = ActiveCall::global(cx).read(cx);
-    let toggle_screen_sharing = match screen {
-        Ok(screen) => {
-            let Some(room) = call.room().cloned() else {
-                return;
-            };
-
-            room.update(cx, |room, cx| {
-                let clicked_on_currently_shared_screen =
-                    room.shared_screen_id().is_some_and(|screen_id| {
-                        Some(screen_id)
-                            == screen
-                                .as_deref()
-                                .and_then(|s| s.metadata().ok().map(|meta| meta.id))
-                    });
-                let should_unshare_current_screen = room.is_sharing_screen();
-                let unshared_current_screen = should_unshare_current_screen.then(|| {
-                    telemetry::event!(
-                        "Screen Share Disabled",
-                        room_id = room.id(),
-                        channel_id = room.channel_id(),
-                    );
-                    room.unshare_screen(clicked_on_currently_shared_screen || screen.is_none(), cx)
-                });
-                if let Some(screen) = screen {
-                    if !should_unshare_current_screen {
-                        telemetry::event!(
-                            "Screen Share Enabled",
-                            room_id = room.id(),
-                            channel_id = room.channel_id(),
-                        );
-                    }
-                    cx.spawn(async move |room, cx| {
-                        unshared_current_screen.transpose()?;
-                        if !clicked_on_currently_shared_screen {
-                            room.update(cx, |room, cx| room.share_screen(screen, cx))?
-                                .await
-                        } else {
-                            Ok(())
-                        }
-                    })
-                } else {
-                    Task::ready(Ok(()))
-                }
-            })
-        }
-        Err(e) => Task::ready(Err(e)),
-    };
-    toggle_screen_sharing.detach_and_prompt_err("Sharing Screen Failed", window, cx, |e, _, _| Some(format!("{:?}\n\nPlease check that you have given Zed permissions to record your screen in Settings.", e)));
 }
 
-pub fn toggle_mute(cx: &mut App) {
-    let call = ActiveCall::global(cx).read(cx);
-    if let Some(room) = call.room().cloned() {
-        room.update(cx, |room, cx| {
-            let operation = if room.is_muted() {
-                "Microphone Enabled"
-            } else {
-                "Microphone Disabled"
-            };
-            telemetry::event!(
-                operation,
-                room_id = room.id(),
-                channel_id = room.channel_id(),
-            );
+pub fn toggle_mute(cx: &mut App) {}
 
-            room.toggle_mute(cx)
-        });
-    }
-}
-
-pub fn toggle_deafen(cx: &mut App) {
-    if let Some(room) = ActiveCall::global(cx).read(cx).room().cloned() {
-        room.update(cx, |room, cx| room.toggle_deafen(cx));
-    }
-}
+pub fn toggle_deafen(cx: &mut App) {}
 
 fn render_color_ribbon(color: Hsla) -> impl Element {
     canvas(
@@ -147,7 +73,6 @@ impl TitleBar {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let room = ActiveCall::global(cx).read(cx).room().cloned();
         let current_user = self.user_store.read(cx).current_user();
         let client = self.client.clone();
         let project_id = self.project.read(cx).remote_id();
@@ -257,7 +182,7 @@ impl TitleBar {
         is_speaking: bool,
         is_muted: bool,
         leader_selection_color: Option<Hsla>,
-        room: &Room,
+        room: (),
         project_id: Option<u64>,
         current_user: &Arc<User>,
         cx: &App,
@@ -690,78 +615,7 @@ impl TitleBar {
     }
 
     fn render_screen_list(&self) -> impl IntoElement {
-        PopoverMenu::new("screen-share-screen-list")
-            .with_handle(self.screen_share_popover_handle.clone())
-            .trigger(
-                ui::ButtonLike::new_rounded_right("screen-share-screen-list-trigger")
-                    .child(
-                        h_flex()
-                            .mx_neg_0p5()
-                            .h_full()
-                            .justify_center()
-                            .child(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
-                    )
-                    .toggle_state(self.screen_share_popover_handle.is_deployed()),
-            )
-            .menu(|window, cx| {
-                let screens = cx.screen_capture_sources();
-                Some(ContextMenu::build(window, cx, |context_menu, _, cx| {
-                    cx.spawn(async move |this: WeakEntity<ContextMenu>, cx| {
-                        let screens = screens.await??;
-                        this.update(cx, |this, cx| {
-                            let active_screenshare_id = ActiveCall::global(cx)
-                                .read(cx)
-                                .room()
-                                .and_then(|room| room.read(cx).shared_screen_id());
-                            for screen in screens {
-                                let Ok(meta) = screen.metadata() else {
-                                    continue;
-                                };
-
-                                let label = meta
-                                    .label
-                                    .clone()
-                                    .unwrap_or_else(|| SharedString::from("Unknown screen"));
-                                let resolution = SharedString::from(format!(
-                                    "{} × {}",
-                                    meta.resolution.width.0, meta.resolution.height.0
-                                ));
-                                this.push_item(ContextMenuItem::CustomEntry {
-                                    entry_render: Box::new(move |_, _| {
-                                        h_flex()
-                                            .gap_2()
-                                            .child(
-                                                Icon::new(IconName::Screen)
-                                                    .size(IconSize::XSmall)
-                                                    .map(|this| {
-                                                        if active_screenshare_id == Some(meta.id) {
-                                                            this.color(Color::Accent)
-                                                        } else {
-                                                            this.color(Color::Muted)
-                                                        }
-                                                    }),
-                                            )
-                                            .child(Label::new(label.clone()))
-                                            .child(
-                                                Label::new(resolution.clone())
-                                                    .color(Color::Muted)
-                                                    .size(LabelSize::Small),
-                                            )
-                                            .into_any()
-                                    }),
-                                    selectable: true,
-                                    documentation_aside: None,
-                                    handler: Rc::new(move |_, window, cx| {
-                                        toggle_screen_sharing(Ok(Some(screen.clone())), window, cx);
-                                    }),
-                                });
-                            }
-                        })
-                    })
-                    .detach_and_log_err(cx);
-                    context_menu
-                }))
-            })
+        div()
     }
 }
 

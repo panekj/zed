@@ -4187,7 +4187,6 @@ impl GitPanel {
         }
     }
 
-    #[cfg(not(feature = "call"))]
     fn potential_co_authors(&self, _cx: &App) -> Vec<(String, String)> {
         Vec::new()
     }
@@ -4251,10 +4250,8 @@ impl GitPanel {
         &mut self,
         _: &ToggleFillCoAuthors,
         _: &mut Window,
-        cx: &mut Context<Self>,
+        _: &mut Context<Self>,
     ) {
-        self.add_coauthors = !self.add_coauthors;
-        cx.notify();
     }
 
     fn set_sort_by_path(&mut self, _: &SetSortByPath, _: &mut Window, cx: &mut Context<Self>) {
@@ -8248,21 +8245,6 @@ impl Render for GitPanel {
         let has_entries = !self.entries.is_empty();
         let has_write_access = self.has_write_access(cx);
 
-        #[cfg(feature = "call")]
-        let has_co_authors = self
-            .workspace
-            .upgrade()
-            .and_then(|_workspace| {
-                call::ActiveCall::try_global(cx).and_then(|call| call.read(cx).room().cloned())
-            })
-            .is_some_and(|room| {
-                self.load_local_committer(cx);
-                let room = room.read(cx);
-                room.remote_participants()
-                    .values()
-                    .any(|remote_participant| remote_participant.can_write())
-            });
-        #[cfg(not(feature = "call"))]
         let has_co_authors = false;
 
         v_flex()
