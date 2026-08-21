@@ -85,7 +85,6 @@ audio.workspace = true
 auto_update.workspace = true
 auto_update_ui.workspace = true
 breadcrumbs.workspace = true
-call.workspace = true
 channel.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -93,7 +92,6 @@ cli.workspace = true
 client.workspace = true
 clock = { workspace = true, optional = true }
 codestral.workspace = true
-collab_ui.workspace = true
 collections.workspace = true
 command_palette.workspace = true
 component_preview.workspace = true
@@ -121,7 +119,6 @@ fs.workspace = true
 futures.workspace = true
 git.workspace = true
 git_hosting_providers.workspace = true
-git_ui = { workspace = true, features = ["call"] }
 git_ui_core.workspace = true
 go_to_line.workspace = true
 gpui = { workspace = true, features = ["profiler"] }
@@ -140,7 +137,6 @@ semver.workspace = true
 system_specs.workspace = true
 tabular_data_preview.workspace = true
 tempfile = { workspace = true, optional = true }
-
 edit_prediction.workspace = true
 edit_prediction_ui.workspace = true
 http_client.workspace = true
@@ -237,6 +233,7 @@ zed_env_vars.workspace = true
 zlog.workspace = true
 zlog_settings.workspace = true
 ztracing.workspace = true
+git_ui = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 etw_tracing.workspace = true
@@ -260,7 +257,6 @@ pkg-config = "0.3.22"
 
 [dev-dependencies]
 activity_indicator = { workspace = true, features = ["test-support"] }
-call = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["profiler", "test-support"] }

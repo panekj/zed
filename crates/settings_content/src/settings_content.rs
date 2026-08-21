@@ -1491,8 +1491,14 @@ impl<T: Clone + std::hash::Hash + Eq> merge_from::MergeFrom for ExtendingSet<T> 
 // later attempts to set it to false will be ignored.
 //
 // Used by `disable_ai`.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SaturatingBool(pub bool);
+
+impl Default for SaturatingBool {
+    fn default() -> Self {
+        Self(true)
+    }
+}
 
 impl From<bool> for SaturatingBool {
     fn from(value: bool) -> Self {

@@ -204,34 +204,22 @@ impl DockerExecConnection {
         &self,
         delegate: &Arc<dyn RemoteClientDelegate>,
         release_channel: ReleaseChannel,
-        version: SemanticVersion,
+        _: SemanticVersion,
         remote_dir_for_server: &str,
-        commit: Option<AppCommitSha>,
+        _: Option<AppCommitSha>,
         cx: &mut AsyncApp,
     ) -> Result<Arc<RelPath>> {
         let remote_platform = self
             .remote_platform
             .context("No remote platform defined; cannot proceed.")?;
 
-        let version_str = match release_channel {
-            ReleaseChannel::Nightly => {
-                let commit = commit.map(|s| s.full()).unwrap_or_default();
-                format!("{}-{}", version, commit)
-            }
-            ReleaseChannel::Dev => "build".to_string(),
-            _ => version.to_string(),
-        };
-        let binary_name = format!(
-            "zed-remote-server-{}-{}",
-            release_channel.dev_name(),
-            version_str
-        );
+        let binary_name = format!("zed-remote-server");
         let dst_path =
             paths::remote_server_dir_relative().join(RelPath::from_unix_str(&binary_name).unwrap());
 
         let binary_exists_on_server = self
             .run_docker_exec(
-                &dst_path.display(self.path_style()),
+                &binary_name,
                 Some(&remote_dir_for_server),
                 &Default::default(),
                 &["version"],
