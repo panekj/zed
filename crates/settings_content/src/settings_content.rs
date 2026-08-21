@@ -1490,31 +1490,25 @@ impl<T: Clone + std::hash::Hash + Eq> merge_from::MergeFrom for ExtendingSet<T> 
 // A SaturatingBool in the settings can only ever be set to true,
 // later attempts to set it to false will be ignored.
 //
-// Used by `disable_ai`.
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct SaturatingBool(pub bool);
+// Used by `enable_ai`.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RestrictiveBool(pub bool);
 
-impl Default for SaturatingBool {
-    fn default() -> Self {
-        Self(true)
-    }
-}
-
-impl From<bool> for SaturatingBool {
+impl From<bool> for RestrictiveBool {
     fn from(value: bool) -> Self {
-        SaturatingBool(value)
+        RestrictiveBool(value)
     }
 }
 
-impl From<SaturatingBool> for bool {
-    fn from(value: SaturatingBool) -> bool {
+impl From<RestrictiveBool> for bool {
+    fn from(value: RestrictiveBool) -> bool {
         value.0
     }
 }
 
-impl merge_from::MergeFrom for SaturatingBool {
+impl merge_from::MergeFrom for RestrictiveBool {
     fn merge_from(&mut self, other: &Self) {
-        self.0 |= other.0
+        self.0 &= other.0
     }
 }
 

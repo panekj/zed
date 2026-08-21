@@ -61,7 +61,7 @@ use paths::{
     local_tasks_file_relative_path,
 };
 use project::{
-    DirectoryLister, DisableAiSettings, ProjectItem,
+    DirectoryLister, EnableAiSettings, ProjectItem,
     project_settings::{SettingsObserver, SettingsObserverEvent},
 };
 use project_panel::ProjectPanel;
@@ -826,25 +826,25 @@ fn setup_or_teardown_ai_panel<P: Panel>(
     ) -> Task<anyhow::Result<Entity<P>>>
     + 'static,
 ) -> Task<anyhow::Result<()>> {
-    let disable_ai = SettingsStore::global(cx)
-        .get::<DisableAiSettings>(None)
-        .disable_ai
+    let enable_ai = SettingsStore::global(cx)
+        .get::<EnableAiSettings>(None)
+        .enable_ai
         || cfg!(test);
     let existing_panel = workspace.panel::<P>(cx);
-    match (disable_ai, existing_panel) {
-        (false, None) => cx.spawn_in(window, async move |workspace, cx| {
+    match (enable_ai, existing_panel) {
+        (true, None) => cx.spawn_in(window, async move |workspace, cx| {
             let panel = load_panel(workspace.clone(), cx.clone()).await?;
             workspace.update_in(cx, |workspace, window, cx| {
-                let disable_ai = SettingsStore::global(cx)
-                    .get::<DisableAiSettings>(None)
-                    .disable_ai;
+                let enable_ai = SettingsStore::global(cx)
+                    .get::<EnableAiSettings>(None)
+                    .enable_ai;
                 let have_panel = workspace.panel::<P>(cx).is_some();
-                if !disable_ai && !have_panel {
+                if enable_ai && !have_panel {
                     workspace.add_panel(panel, window, cx);
                 }
             })
         }),
-        (true, Some(existing_panel)) => {
+        (false, Some(existing_panel)) => {
             workspace.remove_panel::<P>(&existing_panel, window, cx);
             Task::ready(Ok(()))
         }
@@ -2212,23 +2212,23 @@ pub fn handle_keymap_file_changes(
     let mut old_base_keymap = *BaseKeymap::get_global(cx);
     let mut old_vim_enabled = VimModeSetting::get_global(cx).0;
     let mut old_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
-    let mut old_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+    let mut old_enable_ai = EnableAiSettings::get_global(cx).enable_ai;
 
     cx.observe_global::<SettingsStore>(move |cx| {
         let new_base_keymap = *BaseKeymap::get_global(cx);
         let new_vim_enabled = VimModeSetting::get_global(cx).0;
         let new_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
-        let new_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+        let new_enable_ai = EnableAiSettings::get_global(cx).enable_ai;
 
         if new_base_keymap != old_base_keymap
             || new_vim_enabled != old_vim_enabled
             || new_helix_enabled != old_helix_enabled
-            || new_disable_ai != old_disable_ai
+            || new_enable_ai != old_enable_ai
         {
             old_base_keymap = new_base_keymap;
             old_vim_enabled = new_vim_enabled;
             old_helix_enabled = new_helix_enabled;
-            old_disable_ai = new_disable_ai;
+            old_enable_ai = new_enable_ai;
 
             base_keymap_tx.unbounded_send(()).unwrap();
         }
@@ -2447,7 +2447,7 @@ pub fn load_default_keymap(cx: &mut App) {
 }
 
 /// Namespaces of actions that are part of an AI feature. When the user opts out
-/// of AI via the `disable_ai` setting, bindings to these actions are dropped so
+/// of AI via the `enable_ai` setting, bindings to these actions are dropped so
 /// that lower-precedence editor defaults (e.g. `editor::NewlineBelow` for
 /// `ctrl-enter`) can fire instead of being shadowed by an action whose handler
 /// silently no-ops.
@@ -2468,7 +2468,7 @@ fn is_ai_keybinding(binding: &KeyBinding) -> bool {
 }
 
 fn filter_disabled_ai_bindings(bindings: Vec<KeyBinding>, cx: &App) -> Vec<KeyBinding> {
-    if !DisableAiSettings::get_global(cx).disable_ai {
+    if !EnableAiSettings::get_global(cx).enable_ai {
         return bindings;
     }
     bindings
@@ -2932,7 +2932,7 @@ mod tests {
     use remote_server::{HeadlessAppState, HeadlessProject};
     use semver::Version;
     use serde_json::json;
-    use settings::{SaturatingBool, SettingsStore, SplicingVec, watch_config_file};
+    use settings::{RestrictiveBool, SettingsStore, SplicingVec, watch_config_file};
     use std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -6382,7 +6382,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_disable_ai_crash(cx: &mut gpui::TestAppContext) {
+    async fn test_enable_ai_crash(cx: &mut gpui::TestAppContext) {
         let app_state = init_test(cx);
         cx.update(init);
         let project = Project::test(app_state.fs.clone(), [], cx).await;
@@ -6393,7 +6393,7 @@ mod tests {
         cx.update(|cx| {
             SettingsStore::update_global(cx, |settings_store, cx| {
                 settings_store.update_user_settings(cx, |settings| {
-                    settings.project.disable_ai = Some(SaturatingBool(true));
+                    settings.project.enable_ai = Some(RestrictiveBool(true));
                 });
             });
         });
@@ -6469,7 +6469,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_disable_ai_filters_keybindings(cx: &mut gpui::TestAppContext) {
+    async fn test_enable_ai_filters_keybindings(cx: &mut gpui::TestAppContext) {
         let _app_state = init_keymap_test(cx);
 
         // With AI enabled, the default keymap should include the assistant
@@ -6488,7 +6488,7 @@ mod tests {
         cx.update(|cx| {
             SettingsStore::update_global(cx, |settings_store, cx| {
                 settings_store.update_user_settings(cx, |settings| {
-                    settings.project.disable_ai = Some(SaturatingBool(true));
+                    settings.project.enable_ai = Some(RestrictiveBool(true));
                 });
             });
         });

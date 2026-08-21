@@ -47,7 +47,7 @@ use language::{
     EditPredictionsMode, EditPreview, File, OffsetRangeExt, Point, TextBufferSnapshot, ToOffset,
     ToPoint, language_settings::all_language_settings,
 };
-use project::{DisableAiSettings, Project, ProjectPath, WorktreeId};
+use project::{EnableAiSettings, Project, ProjectPath, WorktreeId};
 use release_channel::AppVersion;
 use semver::Version;
 use serde::de::DeserializeOwned;
@@ -1274,7 +1274,7 @@ impl EditPredictionStore {
         project: &Entity<Project>,
         cx: &mut Context<Self>,
     ) -> Option<Entity<Copilot>> {
-        if DisableAiSettings::get(None, cx).disable_ai {
+        if EnableAiSettings::get(None, cx).enable_ai {
             return None;
         }
         let state = self.get_or_init_project(project, cx);

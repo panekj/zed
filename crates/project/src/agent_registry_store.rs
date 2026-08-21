@@ -15,7 +15,7 @@ use serde::Deserialize;
 use settings::Settings as _;
 use util::ResultExt;
 
-use crate::{AgentId, DisableAiSettings};
+use crate::{AgentId, EnableAiSettings};
 
 const REGISTRY_URL: &str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const REFRESH_THROTTLE_DURATION: Duration = Duration::from_secs(60 * 60);
@@ -206,7 +206,7 @@ impl AgentRegistryStore {
             return;
         }
 
-        if DisableAiSettings::get_global(cx).disable_ai {
+        if EnableAiSettings::get_global(cx).enable_ai {
             return;
         }
 
@@ -294,7 +294,7 @@ impl AgentRegistryStore {
         http_client: Arc<dyn HttpClient>,
         cx: &mut Context<Self>,
     ) {
-        if DisableAiSettings::get_global(cx).disable_ai {
+        if EnableAiSettings::get_global(cx).enable_ai {
             return;
         }
 

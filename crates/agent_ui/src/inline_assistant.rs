@@ -42,7 +42,7 @@ use language::{Buffer, Point, Selection, TransactionId};
 use language_model::{ConfigurationError, ConfiguredModel, LanguageModelRegistry};
 use multi_buffer::MultiBufferRow;
 use parking_lot::Mutex;
-use project::{DisableAiSettings, Project};
+use project::{EnableAiSettings, Project};
 use prompt_store::PromptBuilder;
 use settings::{Settings, SettingsStore};
 
@@ -56,7 +56,7 @@ pub fn init(fs: Arc<dyn Fs>, prompt_builder: Arc<PromptBuilder>, cx: &mut App) {
     cx.set_global(InlineAssistant::new(fs, prompt_builder));
 
     cx.observe_global::<SettingsStore>(|cx| {
-        if DisableAiSettings::get_global(cx).disable_ai {
+        if EnableAiSettings::get_global(cx).enable_ai {
             // Hide any active inline assist UI when AI is disabled
             InlineAssistant::update_global(cx, |assistant, cx| {
                 assistant.cancel_all_active_completions(cx);

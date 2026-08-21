@@ -172,13 +172,13 @@ pub fn init(cx: &mut App) {
 /// Hides or shows the panel layout actions in the command palette based on
 /// whether AI is currently disabled.
 fn update_layout_action_filter(cx: &mut App) {
-    let disable_ai = project::DisableAiSettings::get_global(cx).disable_ai;
+    let enable_ai = project::EnableAiSettings::get_global(cx).enable_ai;
     let layout_actions = [
         TypeId::of::<UseClassicLayout>(),
         TypeId::of::<UseAgenticLayout>(),
     ];
     CommandPaletteFilter::update_global(cx, |filter, _| {
-        if disable_ai {
+        if !enable_ai {
             filter.hide_action_types(&layout_actions);
         } else {
             filter.show_action_types(layout_actions.iter());
@@ -1181,7 +1181,7 @@ impl TitleBar {
                 let user_store = user_store.clone();
                 let workspace = workspace.clone();
 
-                let ai_enabled = !project::DisableAiSettings::get_global(cx).disable_ai;
+                let ai_enabled = !project::EnableAiSettings::get_global(cx).enable_ai;
                 let current_layout = AgentSettings::get_layout(cx);
                 let is_editor = matches!(current_layout, WindowLayout::Editor(_));
                 let is_agent = matches!(current_layout, WindowLayout::Agent(_));

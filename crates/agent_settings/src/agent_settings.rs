@@ -12,7 +12,7 @@ use fs::Fs;
 use futures::channel::oneshot;
 use gpui::{App, Pixels, SharedString};
 use language_model::LanguageModel;
-use project::DisableAiSettings;
+use project::EnableAiSettings;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::{
@@ -246,7 +246,7 @@ pub struct AgentSettings {
 
 impl AgentSettings {
     pub fn enabled(&self, cx: &App) -> bool {
-        self.enabled && !DisableAiSettings::get_global(cx).disable_ai
+        self.enabled && EnableAiSettings::get_global(cx).enable_ai
     }
 
     pub fn temperature_for_model(model: &Arc<dyn LanguageModel>, cx: &App) -> Option<f32> {
@@ -1066,7 +1066,7 @@ mod tests {
     fn test_terminal_init_command_filters_empty_without_trimming(cx: &mut gpui::App) {
         let store = SettingsStore::test(cx);
         cx.set_global(store);
-        project::DisableAiSettings::register(cx);
+        project::EnableAiSettings::register(cx);
         AgentSettings::register(cx);
 
         SettingsStore::update_global(cx, |store, cx| {
@@ -1709,7 +1709,7 @@ mod tests {
     fn test_get_layout(cx: &mut gpui::App) {
         let store = SettingsStore::test(cx);
         cx.set_global(store);
-        project::DisableAiSettings::register(cx);
+        project::EnableAiSettings::register(cx);
         AgentSettings::register(cx);
 
         // Should be Agent with an empty user layout (user hasn't customized).
@@ -1764,7 +1764,7 @@ mod tests {
     fn test_set_layout_round_trip(cx: &mut gpui::App) {
         let store = SettingsStore::test(cx);
         cx.set_global(store);
-        project::DisableAiSettings::register(cx);
+        project::EnableAiSettings::register(cx);
         AgentSettings::register(cx);
 
         // User has a custom layout: agent on the right with project panel
@@ -1841,7 +1841,7 @@ mod tests {
         cx.update(|cx| {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
-            project::DisableAiSettings::register(cx);
+            project::EnableAiSettings::register(cx);
             AgentSettings::register(cx);
 
             // User has agent=left (matches preset) and project_panel=left (does not)
@@ -1911,7 +1911,7 @@ mod tests {
         cx.update(|cx| {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
-            project::DisableAiSettings::register(cx);
+            project::EnableAiSettings::register(cx);
             AgentSettings::register(cx);
 
             // Simulate pre-migration state: editor defaults (the old world).

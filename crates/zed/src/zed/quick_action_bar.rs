@@ -16,7 +16,7 @@ use gpui::{
     WeakEntity, Window, anchored, deferred, point,
 };
 use project::{
-    DisableAiSettings,
+    EnableAiSettings,
     project_settings::{DiagnosticSeverity, ProjectSettings},
 };
 use search::{BufferSearchBar, buffer_search};
@@ -253,7 +253,7 @@ impl Render for QuickActionBar {
 
             let focus = editor.focus_handle(cx);
 
-            let disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+            let enable_ai = EnableAiSettings::get_global(cx).enable_ai;
 
             PopoverMenu::new("editor-selections-dropdown")
                 .trigger_with_tooltip(
@@ -290,7 +290,7 @@ impl Render for QuickActionBar {
                                     skip_soft_wrap: true,
                                 }),
                             )
-                            .when(!disable_ai, |this| {
+                            .when(enable_ai, |this| {
                                 this.separator().action_disabled_when(
                                     !has_selection,
                                     "Add to Agent Thread",

@@ -26,7 +26,7 @@ use settings::{Settings as _, SettingsLocation, SettingsStore, WorktreeId};
 use util::{ResultExt as _, rel_path::RelPath};
 
 use crate::{
-    DisableAiSettings, Project,
+    EnableAiSettings, Project,
     project_settings::{ContextServerSettings, OAuthClientSettings, ProjectSettings},
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
@@ -460,7 +460,7 @@ impl ContextServerStore {
         cx: &mut Context<Self>,
     ) -> Self {
         let mut subscriptions = vec![cx.observe_global::<SettingsStore>(move |this, cx| {
-            let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+            let ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
             let ai_was_disabled = this.ai_disabled;
             this.ai_disabled = ai_disabled;
 
@@ -488,7 +488,7 @@ impl ContextServerStore {
 
         if maintain_server_loop {
             subscriptions.push(cx.observe(&registry, |this, _registry, cx| {
-                if !DisableAiSettings::get_global(cx).disable_ai {
+                if !EnableAiSettings::get_global(cx).enable_ai {
                     this.available_context_servers_changed(cx);
                 }
             }));
@@ -497,7 +497,7 @@ impl ContextServerStore {
                     event,
                     WorktreeStoreEvent::WorktreeAdded(_)
                         | WorktreeStoreEvent::WorktreeRemoved(_, _)
-                ) && !DisableAiSettings::get_global(cx).disable_ai
+                ) && !EnableAiSettings::get_global(cx).enable_ai
                 {
                     this.context_server_settings =
                         Self::resolve_all_context_server_settings(&this.worktree_store, cx);
@@ -506,7 +506,7 @@ impl ContextServerStore {
             }));
         }
 
-        let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+        let ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
         let mut this = Self {
             state,
             _subscriptions: subscriptions,
@@ -522,7 +522,7 @@ impl ContextServerStore {
             context_server_factory,
             server_working_directories: HashMap::default(),
         };
-        if maintain_server_loop && !DisableAiSettings::get_global(cx).disable_ai {
+        if maintain_server_loop && !EnableAiSettings::get_global(cx).enable_ai {
             this.available_context_servers_changed(cx);
         }
         this
@@ -1729,7 +1729,7 @@ impl ContextServerStore {
 
     async fn maintain_servers(this: WeakEntity<Self>, cx: &mut AsyncApp) -> Result<()> {
         // Don't start context servers if AI is disabled
-        let ai_disabled = this.update(cx, |_, cx| DisableAiSettings::get_global(cx).disable_ai)?;
+        let ai_disabled = this.update(cx, |_, cx| EnableAiSettings::get_global(cx).enable_ai)?;
         if ai_disabled {
             // Stop all running servers when AI is disabled
             this.update(cx, |this, cx| {

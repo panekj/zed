@@ -40826,11 +40826,11 @@ async fn test_diff_review_indicator_created_on_gutter_hover(cx: &mut TestAppCont
 async fn test_diff_review_button_hidden_when_ai_disabled(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
-    // Register DisableAiSettings and set disable_ai to true
+    // Register DisableAiSettings and set enable_ai to true
     cx.update(|cx| {
-        project::DisableAiSettings::register(cx);
-        project::DisableAiSettings::override_global(
-            project::DisableAiSettings { disable_ai: true },
+        project::EnableAiSettings::register(cx);
+        project::EnableAiSettings::override_global(
+            project::EnableAiSettings { enable_ai: true },
             cx,
         );
     });
@@ -40868,7 +40868,7 @@ async fn test_diff_review_button_hidden_when_ai_disabled(cx: &mut TestAppContext
     // Verify AI is disabled
     cx.read(|cx| {
         assert!(
-            project::DisableAiSettings::get_global(cx).disable_ai,
+            project::EnableAiSettings::get_global(cx).enable_ai,
             "AI should be disabled"
         );
     });
@@ -40887,11 +40887,11 @@ async fn test_diff_review_button_hidden_when_ai_disabled(cx: &mut TestAppContext
 async fn test_diff_review_button_shown_when_ai_enabled(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
-    // Register DisableAiSettings and set disable_ai to false
+    // Register DisableAiSettings and set enable_ai to false
     cx.update(|cx| {
-        project::DisableAiSettings::register(cx);
-        project::DisableAiSettings::override_global(
-            project::DisableAiSettings { disable_ai: false },
+        project::EnableAiSettings::register(cx);
+        project::EnableAiSettings::override_global(
+            project::EnableAiSettings { enable_ai: false },
             cx,
         );
     });
@@ -40929,7 +40929,7 @@ async fn test_diff_review_button_shown_when_ai_enabled(cx: &mut TestAppContext) 
     // Verify AI is enabled
     cx.read(|cx| {
         assert!(
-            !project::DisableAiSettings::get_global(cx).disable_ai,
+            !project::EnableAiSettings::get_global(cx).enable_ai,
             "AI should be enabled"
         );
     });

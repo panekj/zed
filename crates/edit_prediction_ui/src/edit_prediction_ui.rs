@@ -7,7 +7,7 @@ use edit_prediction::ResetOnboarding;
 use edit_prediction_context_view::EditPredictionContextView;
 use feature_flags::FeatureFlagAppExt as _;
 use gpui::actions;
-use project::DisableAiSettings;
+use project::EnableAiSettings;
 use rate_prediction_modal::RatePredictionsModal;
 use settings::{Settings as _, SettingsStore};
 use std::any::{Any as _, TypeId};
@@ -92,7 +92,7 @@ fn feature_gate_predict_edits_actions(cx: &mut App) {
     });
 
     cx.observe_global::<SettingsStore>(move |cx| {
-        let is_ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+        let is_ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
         let has_feature_flag = cx.has_flag::<PredictEditsRatePredictionsFeatureFlag>();
 
         CommandPaletteFilter::update_global(cx, |filter, _cx| {
@@ -108,7 +108,7 @@ fn feature_gate_predict_edits_actions(cx: &mut App) {
     .detach();
 
     cx.observe_flag::<PredictEditsRatePredictionsFeatureFlag, _>(move |value, cx| {
-        if !DisableAiSettings::get_global(cx).disable_ai {
+        if !EnableAiSettings::get_global(cx).enable_ai {
             if *value {
                 CommandPaletteFilter::update_global(cx, |filter, _cx| {
                     filter.show_action_types(&rate_completion_action_types);

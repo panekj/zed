@@ -280,7 +280,7 @@ mod tests {
 
         let store = SettingsStore::test(cx);
         cx.set_global(store);
-        project::DisableAiSettings::register(cx);
+        project::EnableAiSettings::register(cx);
         AgentSettings::register(cx);
 
         let write = AgentProfileId(builtin_profiles::WRITE.into());

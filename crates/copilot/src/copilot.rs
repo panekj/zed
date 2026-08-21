@@ -25,7 +25,7 @@ use lsp::{LanguageServer, LanguageServerBinary, LanguageServerId, LanguageServer
 use node_runtime::{NodeRuntime, VersionStrategy};
 use parking_lot::Mutex;
 use project::project_settings::ProjectSettings;
-use project::{DisableAiSettings, Project};
+use project::{EnableAiSettings, Project};
 use request::DidChangeStatus;
 use serde_json::json;
 use settings::{Settings, SettingsStore};
@@ -273,7 +273,7 @@ impl GlobalCopilotAuth {
     }
 
     pub fn try_get_or_init(app_state: Arc<AppState>, cx: &mut App) -> Option<GlobalCopilotAuth> {
-        let ai_enabled = !DisableAiSettings::get(None, cx).disable_ai;
+        let ai_enabled = !EnableAiSettings::get(None, cx).enable_ai;
 
         if let Some(copilot) = cx.try_global::<Self>().cloned() {
             if ai_enabled {
@@ -383,7 +383,7 @@ impl Copilot {
         };
         this.start_copilot(true, false, cx);
         cx.observe_global::<SettingsStore>(move |this, cx| {
-            let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+            let ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
 
             if ai_disabled {
                 // Stop the server if AI is disabled
@@ -445,7 +445,7 @@ impl Copilot {
         awaiting_sign_in_after_start: bool,
         cx: &mut Context<Self>,
     ) {
-        if DisableAiSettings::get_global(cx).disable_ai {
+        if EnableAiSettings::get_global(cx).enable_ai {
             return;
         }
         if !matches!(self.server, CopilotServer::Disabled) {
@@ -1285,7 +1285,7 @@ impl Copilot {
     fn update_action_visibilities(&self, cx: &mut App) {
         let signed_in_actions = [TypeId::of::<Reinstall>()];
 
-        let is_ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+        let is_ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
         let filter = CommandPaletteFilter::global_mut(cx);
 
         if is_ai_disabled {
@@ -1437,11 +1437,11 @@ mod tests {
         cx.update(|cx| {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
-            DisableAiSettings::register(cx);
+            EnableAiSettings::register(cx);
             AllLanguageSettings::register(cx);
 
-            // Set disable_ai to true before creating Copilot
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            // Set enable_ai to true before creating Copilot
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: false }, cx);
         });
 
         let copilot = cx.new(|cx| Copilot {
@@ -1462,7 +1462,7 @@ mod tests {
         copilot.read_with(cx, |copilot, _| {
             assert!(
                 matches!(copilot.server, CopilotServer::Disabled),
-                "Copilot should not start when disable_ai is true"
+                "Copilot should not start when enable_ai is false"
             );
         });
     }
@@ -1472,20 +1472,20 @@ mod tests {
         cx.update(|cx| {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
-            DisableAiSettings::register(cx);
+            EnableAiSettings::register(cx);
             AllLanguageSettings::register(cx);
 
             // AI is initially enabled
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: false }, cx);
         });
 
         // Create a fake Copilot that's already running, with the settings observer
         let (copilot, _lsp) = Copilot::fake(cx);
 
-        // Add the settings observer that handles disable_ai changes
+        // Add the settings observer that handles enable_ai changes
         copilot.update(cx, |_, cx| {
             cx.observe_global::<SettingsStore>(move |this, cx| {
-                let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+                let ai_disabled = EnableAiSettings::get_global(cx).enable_ai;
 
                 if ai_disabled {
                     if !matches!(this.server, CopilotServer::Disabled) {
@@ -1521,7 +1521,7 @@ mod tests {
 
         // Now disable AI
         cx.update(|cx| {
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: true }, cx);
         });
 
         // The settings observer should have stopped the server
@@ -1530,7 +1530,7 @@ mod tests {
         copilot.read_with(cx, |copilot, _| {
             assert!(
                 matches!(copilot.server, CopilotServer::Disabled),
-                "Copilot should be disabled after disable_ai is set to true"
+                "Copilot should be disabled after enable_ai is set to true"
             );
         });
     }
@@ -1783,11 +1783,11 @@ mod tests {
         cx.update(|cx| {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
-            DisableAiSettings::register(cx);
+            EnableAiSettings::register(cx);
             AllLanguageSettings::register(cx);
 
             // AI is initially disabled
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: true }, cx);
         });
 
         let copilot = cx.new(|cx| Copilot {
@@ -1816,13 +1816,13 @@ mod tests {
         copilot.read_with(cx, |copilot, _| {
             assert!(
                 matches!(copilot.server, CopilotServer::Disabled),
-                "Copilot should remain disabled when disable_ai is true"
+                "Copilot should remain disabled when enable_ai is true"
             );
         });
 
         // Now enable AI
         cx.update(|cx| {
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: false }, cx);
         });
 
         // Try to start again - should work now
@@ -1833,7 +1833,7 @@ mod tests {
         copilot.read_with(cx, |copilot, _| {
             assert!(
                 matches!(copilot.server, CopilotServer::Starting { .. }),
-                "Copilot should be starting after disable_ai is set to false"
+                "Copilot should be starting after enable_ai is set to false"
             );
         });
     }

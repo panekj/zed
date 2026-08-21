@@ -1064,7 +1064,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
                             } else {
                                 log::warn!(
                                     "zed://agent received but the AgentPanel is not registered \
-                                     (is `disable_ai` enabled?)"
+                                     (is `enable_ai` enabled?)"
                                 );
                             }
                         });

@@ -14,7 +14,7 @@ use util::serde::default_true;
 
 use crate::{
     AllLanguageSettingsContent, DelayMs, ExtendingVec, ParseStatus, ProjectTerminalSettingsContent,
-    RootUserSettings, SaturatingBool, SplicingVec, fallible_options,
+    RestrictiveBool, RootUserSettings, SplicingVec, fallible_options,
 };
 
 #[with_fallible_options]
@@ -84,7 +84,7 @@ pub struct ProjectSettingsContent {
     /// Whether to disable all AI features in Zed.
     ///
     /// Default: false
-    pub disable_ai: Option<SaturatingBool>,
+    pub enable_ai: Option<RestrictiveBool>,
 }
 
 /// When to scan content of linked directories.

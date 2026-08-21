@@ -22,7 +22,7 @@ use language::{
         AllLanguageSettings, EditPredictionProvider, LanguageSettings, all_language_settings,
     },
 };
-use project::{DisableAiSettings, Project};
+use project::{EnableAiSettings, Project};
 use regex::Regex;
 use settings::{Settings, SettingsStore, update_settings_file};
 use std::{
@@ -75,7 +75,7 @@ pub struct EditPredictionButton {
 impl Render for EditPredictionButton {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Return empty div if AI is disabled
-        if DisableAiSettings::get_global(cx).disable_ai {
+        if EnableAiSettings::get_global(cx).enable_ai {
             return div().hidden();
         }
 

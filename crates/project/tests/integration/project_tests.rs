@@ -17191,29 +17191,29 @@ async fn test_read_only_files_with_lock_files(cx: &mut gpui::TestAppContext) {
     });
 }
 
-mod disable_ai_settings_tests {
+mod enable_ai_settings_tests {
     use gpui::TestAppContext;
     use project::*;
     use settings::{Settings, SettingsStore};
 
     #[gpui::test]
-    async fn test_disable_ai_settings_security(cx: &mut TestAppContext) {
+    async fn test_enable_ai_settings_security(cx: &mut TestAppContext) {
         cx.update(|cx| {
             settings::init(cx);
 
             // Test 1: Default is false (AI enabled)
             assert!(
-                !DisableAiSettings::get_global(cx).disable_ai,
+                !EnableAiSettings::get_global(cx).enable_ai,
                 "Default should allow AI"
             );
         });
 
         let disable_true = serde_json::json!({
-            "disable_ai": true
+            "enable_ai": true
         })
         .to_string();
         let disable_false = serde_json::json!({
-            "disable_ai": false
+            "enable_ai": false
         })
         .to_string();
 
@@ -17223,7 +17223,7 @@ mod disable_ai_settings_tests {
         });
         cx.update(|cx| {
             assert!(
-                DisableAiSettings::get_global(cx).disable_ai,
+                EnableAiSettings::get_global(cx).enable_ai,
                 "Local false cannot override global true"
             );
         });
@@ -17235,14 +17235,14 @@ mod disable_ai_settings_tests {
 
         cx.update(|cx| {
             assert!(
-                DisableAiSettings::get_global(cx).disable_ai,
+                EnableAiSettings::get_global(cx).enable_ai,
                 "Local false cannot override global true"
             );
         });
     }
 
     #[gpui::test]
-    async fn test_disable_ai_project_level_settings(cx: &mut TestAppContext) {
+    async fn test_enable_ai_project_level_settings(cx: &mut TestAppContext) {
         use settings::{LocalSettingsKind, LocalSettingsPath, SettingsLocation, SettingsStore};
         use worktree::WorktreeId;
 
@@ -17251,7 +17251,7 @@ mod disable_ai_settings_tests {
 
             // Default should allow AI
             assert!(
-                !DisableAiSettings::get_global(cx).disable_ai,
+                !EnableAiSettings::get_global(cx).enable_ai,
                 "Default should allow AI"
             );
         });
@@ -17266,29 +17266,29 @@ mod disable_ai_settings_tests {
             path: project_path.as_ref(),
         };
 
-        // Test: Project-level disable_ai=true should disable AI for files in that project
+        // Test: Project-level enable_ai=true should disable AI for files in that project
         cx.update_global::<SettingsStore, _>(|store, cx| {
             store
                 .set_local_settings(
                     worktree_id,
                     LocalSettingsPath::InWorktree(project_path.clone()),
                     LocalSettingsKind::Settings,
-                    Some(r#"{ "disable_ai": true }"#),
+                    Some(r#"{ "enable_ai": true }"#),
                     cx,
                 )
                 .unwrap();
         });
 
         cx.update(|cx| {
-            let settings = DisableAiSettings::get(Some(settings_location), cx);
+            let settings = EnableAiSettings::get(Some(settings_location), cx);
             assert!(
-                settings.disable_ai,
-                "Project-level disable_ai=true should disable AI for files in that project"
+                settings.enable_ai,
+                "Project-level enable_ai=true should disable AI for files in that project"
             );
-            // Global should now also be true since project-level disable_ai is merged into global
+            // Global should now also be true since project-level enable_ai is merged into global
             assert!(
-                DisableAiSettings::get_global(cx).disable_ai,
-                "Global setting should be affected by project-level disable_ai=true"
+                EnableAiSettings::get_global(cx).enable_ai,
+                "Global setting should be affected by project-level enable_ai=true"
             );
         });
 
@@ -17299,27 +17299,27 @@ mod disable_ai_settings_tests {
                     worktree_id,
                     LocalSettingsPath::InWorktree(project_path.clone()),
                     LocalSettingsKind::Settings,
-                    Some(r#"{ "disable_ai": false }"#),
+                    Some(r#"{ "enable_ai": false }"#),
                     cx,
                 )
                 .unwrap();
         });
 
         cx.update(|cx| {
-            let settings = DisableAiSettings::get(Some(settings_location), cx);
+            let settings = EnableAiSettings::get(Some(settings_location), cx);
             assert!(
-                !settings.disable_ai,
-                "Project-level disable_ai=false should allow AI"
+                !settings.enable_ai,
+                "Project-level enable_ai=false should allow AI"
             );
             // Global should also be false now
             assert!(
-                !DisableAiSettings::get_global(cx).disable_ai,
+                !EnableAiSettings::get_global(cx).enable_ai,
                 "Global setting should be false when project-level is false"
             );
         });
 
         // Test: User-level true + project-level false = AI disabled (saturation)
-        let disable_true = serde_json::json!({ "disable_ai": true }).to_string();
+        let disable_true = serde_json::json!({ "enable_ai": true }).to_string();
         cx.update_global::<SettingsStore, _>(|store, cx| {
             store.set_user_settings(&disable_true, cx).unwrap();
             store
@@ -17327,16 +17327,16 @@ mod disable_ai_settings_tests {
                     worktree_id,
                     LocalSettingsPath::InWorktree(project_path.clone()),
                     LocalSettingsKind::Settings,
-                    Some(r#"{ "disable_ai": false }"#),
+                    Some(r#"{ "enable_ai": false }"#),
                     cx,
                 )
                 .unwrap();
         });
 
         cx.update(|cx| {
-            let settings = DisableAiSettings::get(Some(settings_location), cx);
+            let settings = EnableAiSettings::get(Some(settings_location), cx);
             assert!(
-                settings.disable_ai,
+                settings.enable_ai,
                 "Project-level false cannot override user-level true (SaturatingBool)"
             );
         });

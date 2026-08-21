@@ -8270,14 +8270,14 @@ fn ai_page(cx: &App) -> SettingsPage {
         [
             SettingsPageItem::SectionHeader("General"),
             SettingsPageItem::SettingItem(SettingItem {
-                title: "Disable AI",
-                description: "Whether to disable all AI features in Zed.",
+                title: "Enable AI",
+                description: "Whether to enable all AI features in Zed.",
                 field: Box::new(SettingField {
                     organization_override: None,
-                    json_path: Some("disable_ai"),
-                    pick: |settings_content| settings_content.project.disable_ai.as_ref(),
+                    json_path: Some("enable_ai"),
+                    pick: |settings_content| settings_content.project.enable_ai.as_ref(),
                     write: |settings_content, value, _| {
-                        settings_content.project.disable_ai = value;
+                        settings_content.project.enable_ai = value;
                     },
                 }),
                 metadata: None,

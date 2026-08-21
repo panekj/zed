@@ -6,7 +6,7 @@ use agent_settings::AgentSettings;
 use client::proto;
 use fs::{FakeFs, Fs};
 use gpui::{TestAppContext, VisualTestContext};
-use project::DisableAiSettings;
+use project::EnableAiSettings;
 use serde_json::json;
 use settings::{Settings, SettingsStore};
 use util::path;
@@ -16,7 +16,7 @@ fn init_test(cx: &mut TestAppContext) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
         theme_settings::init(theme::LoadThemes::JustBase, cx);
-        DisableAiSettings::register(cx);
+        EnableAiSettings::register(cx);
     });
 }
 
@@ -47,7 +47,7 @@ fn setup_multi_workspace<'a>(
 }
 
 #[gpui::test]
-async fn test_sidebar_disabled_when_disable_ai_is_enabled(cx: &mut TestAppContext) {
+async fn test_sidebar_disabled_when_enable_ai_is_enabled(cx: &mut TestAppContext) {
     init_test(cx);
     let fs = FakeFs::new(cx.executor());
     let project = Project::test(fs, [], cx).await;
@@ -65,18 +65,18 @@ async fn test_sidebar_disabled_when_disable_ai_is_enabled(cx: &mut TestAppContex
     });
 
     cx.update(|_window, cx| {
-        DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+        EnableAiSettings::override_global(EnableAiSettings { enable_ai: true }, cx);
     });
     cx.run_until_parked();
 
     multi_workspace.read_with(cx, |mw, cx| {
         assert!(
             !mw.sidebar_open(),
-            "Sidebar should be closed when disable_ai is true"
+            "Sidebar should be closed when enable_ai is true"
         );
         assert!(
             !mw.multi_workspace_enabled(cx),
-            "Multi-workspace should be disabled when disable_ai is true"
+            "Multi-workspace should be disabled when enable_ai is true"
         );
     });
 
@@ -86,12 +86,12 @@ async fn test_sidebar_disabled_when_disable_ai_is_enabled(cx: &mut TestAppContex
     multi_workspace.read_with(cx, |mw, _cx| {
         assert!(
             !mw.sidebar_open(),
-            "Sidebar should remain closed when toggled with disable_ai true"
+            "Sidebar should remain closed when toggled with enable_ai true"
         );
     });
 
     cx.update(|_window, cx| {
-        DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+        EnableAiSettings::override_global(EnableAiSettings { enable_ai: false }, cx);
     });
     cx.run_until_parked();
 

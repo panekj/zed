@@ -58,7 +58,7 @@ use language::{
 use language_model::{
     ConfiguredModel, LanguageModelId, LanguageModelProviderId, LanguageModelRegistry,
 };
-use project::{AgentId, DisableAiSettings};
+use project::{AgentId, EnableAiSettings};
 use prompt_store::{self, PromptBuilder, rules_to_skills_migration};
 use rope::Point;
 use schemars::JsonSchema;
@@ -788,7 +788,7 @@ fn maybe_backfill_editor_layout(fs: Arc<dyn Fs>, is_new_install: bool, cx: &mut 
 }
 
 fn update_command_palette_filter(cx: &mut App) {
-    let disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+    let enable_ai = EnableAiSettings::get_global(cx).enable_ai;
     let agent_enabled = AgentSettings::get_global(cx).enabled;
 
     let edit_prediction_provider = AllLanguageSettings::get_global(cx)
@@ -816,7 +816,7 @@ fn update_command_palette_filter(cx: &mut App) {
             TypeId::of::<zed_actions::assistant::CreateSkillFromUrl>(),
         ];
 
-        if disable_ai {
+        if !enable_ai {
             filter.hide_namespace("agent");
             filter.hide_namespace("agents");
             filter.hide_namespace("assistant");
@@ -869,7 +869,7 @@ fn update_command_palette_filter(cx: &mut App) {
         // settings UI now. Applied after the disable-ai / agent-enabled
         // branches so it overrides the `show_namespace("assistant")` call
         // above without affecting the rest of that namespace's actions.
-        if !disable_ai {
+        if enable_ai {
             filter.hide_action_types(&manage_skills_action);
             filter.show_action_types(skill_creator_actions.iter());
         } else {
@@ -955,7 +955,7 @@ mod tests {
     use db::kvp::KeyValueStore;
     use editor::actions::AcceptEditPrediction;
     use gpui::{BorrowAppContext, TestAppContext, px};
-    use project::DisableAiSettings;
+    use project::EnableAiSettings;
     use settings::{
         DockPosition, NotifyWhenAgentWaiting, PlaySoundWhenAgentDone, Settings, SettingsStore,
     };
@@ -968,7 +968,7 @@ mod tests {
             cx.set_global(store);
             command_palette_hooks::init(cx);
             AgentSettings::register(cx);
-            DisableAiSettings::register(cx);
+            EnableAiSettings::register(cx);
             AllLanguageSettings::register(cx);
         });
 
@@ -1018,7 +1018,7 @@ mod tests {
 
         cx.update(|cx| {
             AgentSettings::override_global(agent_settings.clone(), cx);
-            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            EnableAiSettings::override_global(EnableAiSettings { enable_ai: false }, cx);
 
             // Initial update
             update_command_palette_filter(cx);
@@ -1145,7 +1145,7 @@ mod tests {
             let store = SettingsStore::test(cx);
             cx.set_global(store);
             AgentSettings::register(cx);
-            DisableAiSettings::register(cx);
+            EnableAiSettings::register(cx);
             cx.set_staff(true);
         });
 

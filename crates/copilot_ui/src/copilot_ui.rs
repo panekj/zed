@@ -5,7 +5,7 @@ use std::sync::Arc;
 use copilot::GlobalCopilotAuth;
 use gpui::AppContext;
 use language::language_settings::AllLanguageSettings;
-use project::DisableAiSettings;
+use project::EnableAiSettings;
 use settings::SettingsStore;
 pub use sign_in::{
     ConfigurationMode, ConfigurationView, CopilotCodeVerification, initiate_sign_in,
@@ -15,8 +15,8 @@ use ui::App;
 use workspace::AppState;
 
 pub fn init(app_state: &Arc<AppState>, cx: &mut App) {
-    let disable_ai = cx.read_global(|settings: &SettingsStore, _| {
-        settings.get::<DisableAiSettings>(None).disable_ai
+    let enable_ai = cx.read_global(|settings: &SettingsStore, _| {
+        settings.get::<EnableAiSettings>(None).enable_ai
     });
     let provider = cx.read_global(|settings: &SettingsStore, _| {
         settings
@@ -24,7 +24,7 @@ pub fn init(app_state: &Arc<AppState>, cx: &mut App) {
             .edit_predictions
             .provider
     });
-    if !disable_ai && provider == settings::EditPredictionProvider::Copilot {
+    if enable_ai && provider == settings::EditPredictionProvider::Copilot {
         GlobalCopilotAuth::set_global(
             app_state.languages.next_language_server_id(),
             app_state.fs.clone(),

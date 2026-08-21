@@ -6,7 +6,7 @@ use gpui::{
     MouseButton, ParentElement, StatefulInteractiveElement, Styled, WeakEntity, Window,
     WindowButtonLayout, WindowControlArea, div, px,
 };
-use project::DisableAiSettings;
+use project::EnableAiSettings;
 use settings::Settings;
 use smallvec::SmallVec;
 use std::mem;
@@ -110,7 +110,7 @@ impl PlatformTitleBar {
     }
 
     pub fn is_multi_workspace_enabled(cx: &App) -> bool {
-        !DisableAiSettings::get_global(cx).disable_ai
+        !EnableAiSettings::get_global(cx).enable_ai
     }
 }
 

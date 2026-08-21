@@ -245,7 +245,7 @@ impl Editor {
         let (buffer, cursor_buffer_position) =
             self.buffer.read(cx).text_anchor_for_position(cursor, cx)?;
 
-        if DisableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
+        if EnableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
             return None;
         }
 
@@ -305,7 +305,7 @@ impl Editor {
         if let Some((buffer, cursor_buffer_position)) =
             self.buffer.read(cx).text_anchor_for_position(cursor, cx)
         {
-            if DisableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
+            if EnableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
                 self.edit_prediction_settings = EditPredictionSettings::Disabled;
                 self.discard_edit_prediction(EditPredictionDiscardReason::Ignored, cx);
                 return;
@@ -823,8 +823,8 @@ impl Editor {
         let (cursor_text_anchor, _) = multibuffer.anchor_to_buffer_anchor(cursor)?;
         let buffer = self.buffer.read(cx).buffer(cursor_text_anchor.buffer_id)?;
 
-        // Check project-level disable_ai setting for the current buffer
-        if DisableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
+        // Check project-level enable_ai setting for the current buffer
+        if EnableAiSettings::is_ai_disabled_for_buffer(Some(&buffer), cx) {
             return None;
         }
         let offset_selection = selection.map(|endpoint| endpoint.to_offset(&multibuffer));

@@ -1136,23 +1136,23 @@ pub enum PulledDiagnostics {
 ///
 /// Default: false
 #[derive(Copy, Clone, Debug, RegisterSetting)]
-pub struct DisableAiSettings {
-    pub disable_ai: bool,
+pub struct EnableAiSettings {
+    pub enable_ai: bool,
 }
 
-impl settings::Settings for DisableAiSettings {
+impl settings::Settings for EnableAiSettings {
     fn from_settings(content: &settings::SettingsContent) -> Self {
         Self {
-            disable_ai: content.project.disable_ai.unwrap().0,
+            enable_ai: content.project.enable_ai.unwrap().0,
         }
     }
 }
 
-impl DisableAiSettings {
+impl EnableAiSettings {
     /// Returns whether AI is disabled for the given file.
     ///
     /// This checks the project-level settings for the file's worktree,
-    /// allowing `disable_ai` to be configured per-project in `.zed/settings.json`.
+    /// allowing `enable_ai` to be configured per-project in `.zed/settings.json`.
     pub fn is_ai_disabled_for_buffer(buffer: Option<&Entity<Buffer>>, cx: &App) -> bool {
         Self::is_ai_disabled_for_file(buffer.and_then(|buffer| buffer.read(cx).file()), cx)
     }
@@ -1162,7 +1162,7 @@ impl DisableAiSettings {
             worktree_id: f.worktree_id(cx),
             path: f.path().as_ref(),
         });
-        Self::get(location, cx).disable_ai
+        Self::get(location, cx).enable_ai
     }
 }
 
