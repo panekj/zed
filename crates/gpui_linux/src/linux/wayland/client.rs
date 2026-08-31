@@ -1438,7 +1438,7 @@ impl WaylandConnection {
             return;
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
-            state.clipboard.set_primary(item);
+            state.clipboard.set_primary(item.clone());
             let Some(serial) = state.serial_tracker.selection_serial() else {
                 log::warn!(
                     "Skipping Wayland primary selection ownership request because no keyboard or pointer press serial has been received"
@@ -1446,6 +1446,14 @@ impl WaylandConnection {
                 return;
             };
             let data_source = primary_selection_manager.create_source(&state.globals.qh, ());
+            for item in item.entries {
+                match item {
+                    gpui::ClipboardEntry::Image(image) => {
+                        data_source.offer(image.format.mime_type().to_string());
+                    }
+                    _ => {}
+                }
+            }
             for mime_type in TEXT_MIME_TYPES {
                 data_source.offer(mime_type.to_string());
             }
