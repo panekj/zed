@@ -180,8 +180,65 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
+    pub fn send(&self, mime_type: String, fd: OwnedFd) {
+        let Some(contents) = self.contents.as_ref() else {
+            return;
+        };
+
+        if mime_type.starts_with("image/") {
+            fn conv(bytes: &[u8], format: image::ImageFormat) -> anyhow::Result<Vec<u8>> {
+                let img = image::load_from_memory(bytes)?;
+                let mut new_bytes = Vec::new();
+                img.write_to(&mut std::io::Cursor::new(&mut new_bytes), format)?;
+                Ok(new_bytes)
+            }
+
+            fn image_format_for_mime(mime_type: &str) -> Option<image::ImageFormat> {
+                match mime_type {
+                    "image/png" => Some(image::ImageFormat::Png),
+                    "image/jpeg" => Some(image::ImageFormat::Jpeg),
+                    "image/webp" => Some(image::ImageFormat::WebP),
+                    "image/gif" => Some(image::ImageFormat::Gif),
+                    "image/bmp" => Some(image::ImageFormat::Bmp),
+                    "image/tiff" => Some(image::ImageFormat::Tiff),
+                    _ => None,
+                }
+            }
+
+            // mime-type matched
+            for entry in contents.entries() {
+                if let ClipboardEntry::Image(image) = entry {
+                    if image.format.mime_type() == mime_type {
+                        self.send_bytes(fd, image.bytes.clone());
+                        return;
+                    }
+                }
+            }
+
+            // image conversion fallback
+            if let Some(target_format) = image_format_for_mime(&mime_type) {
+                for entry in contents.entries() {
+                    if let ClipboardEntry::Image(image) = entry {
+                        match conv(&image.bytes, target_format) {
+                            Ok(converted) => {
+                                self.send_bytes(fd, converted);
+                                return;
+                            }
+                            Err(err) => {
+                                log::warn!(
+                                    "failed to convert clipboard image from {:?} to {mime_type}: {err}",
+                                    image.format
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            return;
+        }
+
+        if let Some(text) = contents.text() {
             self.send_bytes(fd, text.as_bytes().to_owned());
         }
     }
