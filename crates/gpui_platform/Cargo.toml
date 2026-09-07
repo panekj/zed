@@ -13,27 +13,32 @@ path = "src/gpui_platform.rs"
 
 [features]
 default = []
-bench-support = ["gpui/bench-support", "gpui_macos/bench-support"]
-font-kit = ["gpui_macos/font-kit"]
-test-support = ["gpui/test-support", "gpui_macos/test-support", "gpui_windows/test-support"]
-screen-capture = ["gpui/screen-capture", "gpui_macos/screen-capture", "gpui_windows/screen-capture", "gpui_linux/screen-capture"]
-runtime_shaders = ["gpui_macos/runtime_shaders"]
-wayland = ["gpui_linux/wayland"]
-x11 = ["gpui_linux/x11"]
+bench-support = ["gpui/bench-support", "gpui_macos?/bench-support"]
+font-kit = ["gpui_macos?/font-kit"]
+test-support = ["gpui/test-support", "gpui_macos?/test-support", "gpui_windows?/test-support"]
+screen-capture = ["gpui/screen-capture", "gpui_macos?/screen-capture", "gpui_windows?/screen-capture", "gpui_linux?/screen-capture"]
+runtime_shaders = ["gpui_macos?/runtime_shaders"]
+
+linux = ["dep:gpui_linux"]
+wayland = ["gpui_linux?/wayland"]
+x11 = ["gpui_linux?/x11"]
+macos = ["dep:gpui_macos"]
+windows = ["dep:gpui_windows"]
+wasm = ["dep:gpui_web", "dep:console_error_panic_hook"]
 
 [dependencies]
 gpui.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
-gpui_macos.workspace = true
+gpui_macos = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-gpui_windows.workspace = true
+gpui_windows = { workspace = true, optional = true }
 gpui = { workspace = true, features = ["windows-manifest"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
-gpui_linux.workspace = true
+gpui_linux = { workspace = true, optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-gpui_web.workspace = true
-console_error_panic_hook.workspace = true
+gpui_web = { workspace = true, optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
