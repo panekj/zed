@@ -48,7 +48,7 @@ x11 = [
 ]
 screen-capture = [
     "gpui/screen-capture",
-    "scap",
+    "dep:scap",
 ]
 
 
