@@ -8,7 +8,6 @@ use collections::HashMap;
 use core::str;
 use gpui::{Capslock, GraphicalEnvironment};
 use gpui_util::ResultExt as _;
-use http_client::Url;
 use log::Level;
 use smallvec::SmallVec;
 use std::{
@@ -19,6 +18,7 @@ use std::{
     rc::{Rc, Weak},
     time::{Duration, Instant},
 };
+use url::Url;
 
 use x11rb::{
     connection::{Connection, RequestConnection},

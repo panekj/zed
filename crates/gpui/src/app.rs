@@ -31,6 +31,7 @@ pub use entity_map::*;
 use gpui_util::{ResultExt, debug_panic};
 #[cfg(any(test, feature = "test-support"))]
 pub use headless_app_context::*;
+#[cfg(feature = "http")]
 use http_client::{HttpClient, Url};
 use smallvec::SmallVec;
 #[cfg(any(test, feature = "test-support"))]
@@ -209,6 +210,7 @@ impl Application {
         Self(App::new_app(
             platform,
             Arc::new(()),
+            #[cfg(feature = "http")]
             Arc::new(NullHttpClient),
         ))
     }
@@ -244,6 +246,7 @@ impl Application {
         self
     }
 
+    #[cfg(feature = "http")]
     /// Sets the HTTP client for the application.
     pub fn with_http_client(self, http_client: Arc<dyn HttpClient>) -> Self {
         let mut context_lock = self.0.borrow_mut();
@@ -910,6 +913,7 @@ pub struct App {
     pub(crate) loading_assets: FxHashMap<(TypeId, u64), Box<dyn Any>>,
     asset_source: Arc<dyn AssetSource>,
     pub(crate) svg_renderer: SvgRenderer,
+    #[cfg(feature = "http")]
     http_client: Arc<dyn HttpClient>,
 
     // below is plain data, the drop order is insignificant here
@@ -956,7 +960,7 @@ impl App {
     pub(crate) fn new_app(
         platform: Rc<dyn Platform>,
         asset_source: Arc<dyn AssetSource>,
-        http_client: Arc<dyn HttpClient>,
+        #[cfg(feature = "http")] http_client: Arc<dyn HttpClient>,
     ) -> Rc<AppCell> {
         let background_executor = platform.background_executor();
         let foreground_executor = platform.foreground_executor();
@@ -997,6 +1001,7 @@ impl App {
                 svg_renderer: SvgRenderer::new(asset_source.clone()),
                 loading_assets: Default::default(),
                 asset_source,
+                #[cfg(feature = "http")]
                 http_client,
                 globals_by_type: Default::default(),
                 entities,
@@ -2064,11 +2069,13 @@ impl App {
         self.restart_path = Some(path);
     }
 
+    #[cfg(feature = "http")]
     /// Returns the HTTP client for the application.
     pub fn http_client(&self) -> Arc<dyn HttpClient> {
         self.http_client.clone()
     }
 
+    #[cfg(feature = "http")]
     /// Sets the HTTP client for the application.
     pub fn set_http_client(&mut self, new_client: Arc<dyn HttpClient>) {
         self.http_client = new_client;
@@ -3626,6 +3633,7 @@ pub struct KeystrokeEvent {
 
 struct NullHttpClient;
 
+#[cfg(feature = "http")]
 impl HttpClient for NullHttpClient {
     fn send(
         &self,

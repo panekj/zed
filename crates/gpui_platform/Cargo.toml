@@ -13,18 +13,23 @@ path = "src/gpui_platform.rs"
 doctest = false
 
 [features]
-default = ["multithreaded"]
+default = []
 # Threads in the browser: needs a nightly toolchain and a cross-origin-isolated
 # page. Off, gpui_web builds on stable.
-multithreaded = ["gpui_web/multithreaded"]
-bench-support = ["gpui/bench-support", "gpui_macos/bench-support", "gpui_wgpu/bench-support"]
-font-kit = ["gpui_macos/font-kit"]
+multithreaded = ["gpui_web?/multithreaded"]
+bench-support = ["gpui/bench-support", "gpui_macos?/bench-support", "gpui_wgpu/bench-support"]
+font-kit = ["gpui_macos?/font-kit"]
 inspector = ["gpui/inspector"]
-test-support = ["gpui/test-support", "gpui_macos/test-support", "gpui_windows/test-support", "gpui_wgpu/test-support"]
-screen-capture = ["gpui/screen-capture", "gpui_macos/screen-capture", "gpui_windows/screen-capture", "gpui_linux/screen-capture"]
-runtime_shaders = ["gpui_macos/runtime_shaders", "gpui_ios/runtime_shaders"]
-wayland = ["gpui_linux/wayland"]
-x11 = ["gpui_linux/x11"]
+test-support = ["gpui/test-support", "gpui_macos?/test-support", "gpui_windows?/test-support", "gpui_wgpu/test-support"]
+screen-capture = ["gpui/screen-capture", "gpui_macos?/screen-capture", "gpui_windows?/screen-capture", "gpui_linux?/screen-capture"]
+runtime_shaders = ["gpui_macos?/runtime_shaders", "gpui_ios?/runtime_shaders"]
+wayland = ["gpui_linux?/wayland"]
+x11 = ["gpui_linux?/x11"]
+
+linux = ["dep:gpui_linux"]
+macos = ["dep:gpui_macos"]
+windows = ["dep:gpui_windows"]
+wasm = ["dep:gpui_web", "dep:console_error_panic_hook"]
 
 [[bench]]
 name = "focus_cleanup"
@@ -53,7 +58,7 @@ criterion.workspace = true
 
 
 [target.'cfg(target_os = "ios")'.dependencies]
-gpui_ios.workspace = true
+gpui_ios = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 gpui_windows = { workspace = true, optional = true }
@@ -63,24 +68,6 @@ gpui = { workspace = true, features = ["windows-manifest"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
 gpui_wgpu = { workspace = true, optional = true }
-
-
-
-[features]
-default = ["multithreaded"]
-bench-support = ["gpui/bench-support", "gpui_macos/bench-support", "gpui_wgpu/bench-support"]
-font-kit = ["gpui_macos?/font-kit"]
-inspector = ["gpui/inspector"]
-test-support = ["gpui/test-support", "gpui_macos?/test-support", "gpui_windows?/test-support"]
-screen-capture = ["gpui/screen-capture", "gpui_macos?/screen-capture", "gpui_windows?/screen-capture", "gpui_linux?/screen-capture"]
-runtime_shaders = ["gpui_macos?/runtime_shaders"]
-
-linux = ["dep:gpui_linux"]
-wayland = ["gpui_linux?/wayland"]
-x11 = ["gpui_linux?/x11"]
-macos = ["dep:gpui_macos"]
-windows = ["dep:gpui_windows"]
-wasm = ["dep:gpui_web", "dep:console_error_panic_hook"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui_macos = { workspace = true, optional = true }

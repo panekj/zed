@@ -55,10 +55,11 @@ hot-reload = [
     "dep:subsecond",
 ]
 
+http = ["dep:http_client"]
 
 windows = ["dep:windows"]
 linux = []
-apple = ["dep:core-video", "dep:objc2", "dep:objc2-metal"]
+apple = ["dep:objc2-core-video", "dep:objc2-core-foundation", "dep:objc2", "dep:objc2-metal"]
 
 [lib]
 path = "src/gpui.rs"
@@ -80,7 +81,7 @@ futures.workspace = true
 futures-concurrency = { workspace = true, optional = true }
 gpui_macros.workspace = true
 gpui_shared_string.workspace = true
-http_client.workspace = true
+http_client = { workspace = true, optional = true }
 image.workspace = true
 inventory.workspace = true
 itertools.workspace = true
@@ -183,7 +184,7 @@ env_logger.workspace = true
 futures-concurrency.workspace = true
 postage = { workspace = true, features = ["blocking"] }
 web-time.workspace = true
-gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11", "linux"] }
 gpui_util.workspace = true
 lyon = { version = "1.0", features = ["extra"] }
 rand = { workspace = true, default-features = true }

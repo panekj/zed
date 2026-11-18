@@ -624,7 +624,9 @@ impl Asset for ImageAssetLoader {
         source: Self::Source,
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
+        #[cfg(feature = "http")]
         let client = cx.http_client();
+
         // TODO: Can we make SVGs always rescale?
         // let scale_factor = cx.scale_factor();
         let svg_renderer = cx.svg_renderer();
@@ -632,6 +634,13 @@ impl Asset for ImageAssetLoader {
         async move {
             let bytes = match source.clone() {
                 Resource::Path(uri) => fs::read(uri.as_ref())?,
+                #[cfg(not(feature = "http"))]
+                Resource::Uri(_) => {
+                    return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
+                        "URI based sources not supported without `http` feature"
+                    ))));
+                }
+                #[cfg(feature = "http")]
                 Resource::Uri(uri) => {
                     use anyhow::Context as _;
                     use futures::AsyncReadExt as _;
@@ -754,6 +763,7 @@ pub enum ImageCacheError {
     /// An error that occurred while reading the image from disk.
     #[error("IO error: {0}")]
     Io(Arc<std::io::Error>),
+    #[cfg(feature = "http")]
     /// An error that occurred while processing an image.
     #[error("unexpected http status for {uri}: {status}, body: {body}")]
     BadStatus {
